@@ -1,0 +1,1193 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime
+import warnings
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+warnings.filterwarnings('ignore')
+
+# Machine Learning Libraries
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.model_selection import train_test_split, TimeSeriesSplit
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import xgboost as xgb
+from sklearn.linear_model import LinearRegression, Ridge
+
+# Deep Learning Libraries
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense, Dropout, GRU
+    from tensorflow.keras.optimizers import Adam
+    DEEP_LEARNING_AVAILABLE = True
+except ImportError:
+    DEEP_LEARNING_AVAILABLE = False
+    print("TensorFlow not available. Deep learning features will be disabled.")
+
+class StockMarketAIAgent:
+    """
+    Professional Institutional Grade AI Agent for Stock Market Analysis
+    
+    Features:
+    - Technical Analysis (MACD, RSI, Bollinger Bands, etc.)
+    - Volume Analysis (VSA, Liquidity Analysis)
+    - Wyckoff Analysis (Smart Money Phases)
+    - Machine Learning Models
+    - Deep Learning (LSTM/GRU) for time series prediction
+    - Multi-timeframe predictions (next day, short term, long term)
+    """
+    
+    def __init__(self):
+        self.data = None
+        self.features = None
+        self.models = {}
+        self.scalers = {}
+        self.predictions = {}
+        self.csv_file_path = None
+        
+    def select_csv_file(self):
+        """Open file dialog to select CSV file"""
+        print("Please select your CSV file...")
+        
+        # Create a root window and hide it
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        
+        # Open file dialog
+        file_path = filedialog.askopenfilename(
+            title="Select Stock Data CSV File",
+            filetypes=[
+                ("CSV files", "*.csv"),
+                ("All files", "*.*")
+            ],
+            initialdir=os.getcwd()
+        )
+        
+        root.destroy()
+        
+        if file_path:
+            self.csv_file_path = file_path
+            print(f"Selected file: {os.path.basename(file_path)}")
+            return file_path
+        else:
+            print("No file selected.")
+            return None
+    
+    def prompt_for_file_upload(self):
+        """Prompt user to upload CSV file with multiple options"""
+        print("\n" + "="*60)
+        print("CSV FILE SELECTION")
+        print("="*60)
+        print("Choose an option:")
+        print("1. Upload your own CSV file")
+        print("2. Use sample data for testing")
+        print("3. Enter file path manually")
+        
+        while True:
+            try:
+                choice = input("\nEnter your choice (1, 2, or 3): ").strip()
+                
+                if choice == '1':
+                    file_path = self.select_csv_file()
+                    if file_path and os.path.exists(file_path):
+                        return file_path
+                    else:
+                        print("File selection cancelled or file doesn't exist.")
+                        continue
+                        
+                elif choice == '2':
+                    print("Creating sample data for testing...")
+                    sample_file = create_sample_data()
+                    return sample_file
+                    
+                elif choice == '3':
+                    file_path = input("Enter the full path to your CSV file: ").strip()
+                    if os.path.exists(file_path):
+                        return file_path
+                    else:
+                        print("File not found. Please check the path and try again.")
+                        continue
+                        
+                else:
+                    print("Invalid choice. Please enter 1, 2, or 3.")
+                    
+            except KeyboardInterrupt:
+                print("\nOperation cancelled by user.")
+                return None
+            except Exception as e:
+                print(f"Error: {str(e)}")
+                continue
+        
+    def load_and_preprocess_data(self, csv_file_path=None):
+        """Load CSV data and preprocess it"""
+        try:
+            # If no file path provided, prompt for file selection
+            if csv_file_path is None:
+                csv_file_path = self.prompt_for_file_upload()
+                if csv_file_path is None:
+                    print("No file provided. Cannot proceed with analysis.")
+                    return False
+            
+            # Validate file exists
+            if not os.path.exists(csv_file_path):
+                print(f"Error: File '{csv_file_path}' not found.")
+                return False
+            
+            # Load data
+            print(f"Loading data from: {os.path.basename(csv_file_path)}")
+            self.data = pd.read_csv(csv_file_path)
+            print(f"Data loaded successfully. Shape: {self.data.shape}")
+            
+            # Display first few rows for verification
+            print("\nFirst 5 rows of your data:")
+            print(self.data.head())
+            
+            # Display column information
+            print(f"\nColumns in your data: {list(self.data.columns)}")
+            
+            # Check for required columns
+            required_columns = ['Date', 'Close', 'Volume', 'Open', 'High', 'Low']
+            missing_columns = [col for col in required_columns if col not in self.data.columns]
+            
+            if missing_columns:
+                print(f"\nWarning: Missing required columns: {missing_columns}")
+                print("The analysis may not work properly without these columns.")
+                
+                # Ask user if they want to continue
+                continue_choice = input("Do you want to continue anyway? (y/n): ").strip().lower()
+                if continue_choice != 'y':
+                    return False
+            
+            # Convert date from milliseconds to datetime
+            if 'Date' in self.data.columns:
+                # Check if date is in milliseconds (numeric)
+                print("Converting date format...")
+                if pd.api.types.is_numeric_dtype(self.data['Date']):
+                    self.data['Date'] = pd.to_datetime(self.data['Date'], unit='ms')
+                else:
+                    # Try to parse as string
+                    try:
+                        self.data['Date'] = pd.to_datetime(self.data['Date'], unit='ms')
+                    except:
+                        try:
+                            self.data['Date'] = pd.to_datetime(self.data['Date'])
+                        except:
+                            print("Warning: Could not parse Date column. Please check date format.")
+                            return False
+                        
+                self.data.set_index('Date', inplace=True)
+                self.data.sort_index(inplace=True)
+                print(f"Date range: {self.data.index[0]} to {self.data.index[-1]}")
+            
+            # Ensure numeric columns
+            numeric_cols = ['Close', 'Volume', 'Open', 'High', 'Low', 'Change', 'Ch(%)', 'Value(cr)', 'Trade']
+            for col in numeric_cols:
+                if col in self.data.columns:
+                    # Convert to numeric, replacing non-numeric values with NaN
+                    self.data[col] = pd.to_numeric(self.data[col], errors='coerce')
+            
+            # Check for missing values
+            missing_data = self.data.isnull().sum()
+            if missing_data.sum() > 0:
+                print(f"\nMissing values found:")
+                for col, count in missing_data[missing_data > 0].items():
+                    print(f"  {col}: {count} missing values")
+                
+                # Fill missing values
+                print("Filling missing values using forward fill...")
+                self.data.fillna(method='ffill', inplace=True)
+                self.data.fillna(method='bfill', inplace=True)  # Backward fill for any remaining
+            
+            # Data validation
+            if len(self.data) < 50:
+                print(f"Warning: Dataset has only {len(self.data)} rows. Minimum 50 rows recommended for reliable analysis.")
+            
+            print("Data preprocessing completed successfully")
+            print(f"Final dataset shape: {self.data.shape}")
+            return True
+            
+        except Exception as e:
+            print(f"Error loading data: {str(e)}")
+            print("Please check your file format and try again.")
+            return False
+    
+    def calculate_technical_indicators(self):
+        """Calculate comprehensive technical indicators"""
+        df = self.data.copy()
+        
+        # MACD (Moving Average Convergence Divergence)
+        exp1 = df['Close'].ewm(span=12).mean()
+        exp2 = df['Close'].ewm(span=26).mean()
+        df['MACD'] = exp1 - exp2
+        df['MACD_signal'] = df['MACD'].ewm(span=9).mean()
+        df['MACD_histogram'] = df['MACD'] - df['MACD_signal']
+        
+        # RSI (Relative Strength Index)
+        delta = df['Close'].diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        avg_gain = gain.rolling(window=14).mean()
+        avg_loss = loss.rolling(window=14).mean()
+        rs = avg_gain / avg_loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # Bollinger Bands
+        df['BB_middle'] = df['Close'].rolling(window=20).mean()
+        bb_std = df['Close'].rolling(window=20).std()
+        df['BB_upper'] = df['BB_middle'] + (bb_std * 2)
+        df['BB_lower'] = df['BB_middle'] - (bb_std * 2)
+        df['BB_width'] = df['BB_upper'] - df['BB_lower']
+        df['BB_position'] = (df['Close'] - df['BB_lower']) / df['BB_width']
+        
+        # Moving Averages
+        for period in [5, 10, 20, 50, 100, 200]:
+            df[f'MA_{period}'] = df['Close'].rolling(window=period).mean()
+            df[f'MA_{period}_slope'] = df[f'MA_{period}'].diff(5)
+        
+        # Volume indicators
+        df['Volume_MA'] = df['Volume'].rolling(window=20).mean()
+        df['Volume_ratio'] = df['Volume'] / df['Volume_MA']
+        
+        # Price momentum
+        for period in [1, 5, 10, 20]:
+            df[f'Price_momentum_{period}'] = df['Close'].pct_change(period)
+        
+        # Volatility
+        df['Volatility'] = df['Close'].rolling(window=20).std()
+        df['ATR'] = self.calculate_atr(df)
+        
+        # Stochastic Oscillator
+        low_min = df['Low'].rolling(window=14).min()
+        high_max = df['High'].rolling(window=14).max()
+        df['Stoch_K'] = 100 * (df['Close'] - low_min) / (high_max - low_min)
+        df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
+        
+        self.data = df
+        print("Technical indicators calculated successfully")
+    
+    def calculate_atr(self, df, period=14):
+        """Calculate Average True Range"""
+        high_low = df['High'] - df['Low']
+        high_close = np.abs(df['High'] - df['Close'].shift())
+        low_close = np.abs(df['Low'] - df['Close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        return true_range.rolling(period).mean()
+    
+    def volume_spread_analysis(self):
+        """Perform Volume Spread Analysis (VSA)"""
+        df = self.data.copy()
+        
+        # Calculate spread (High - Low)
+        df['Spread'] = df['High'] - df['Low']
+        df['Spread_MA'] = df['Spread'].rolling(window=20).mean()
+        df['Spread_ratio'] = df['Spread'] / df['Spread_MA']
+        
+        # Volume analysis
+        df['Volume_MA'] = df['Volume'].rolling(window=20).mean()
+        df['Volume_ratio'] = df['Volume'] / df['Volume_MA']
+        
+        # VSA signals
+        df['High_volume'] = df['Volume_ratio'] > 1.5
+        df['Low_volume'] = df['Volume_ratio'] < 0.5
+        df['Wide_spread'] = df['Spread_ratio'] > 1.2
+        df['Narrow_spread'] = df['Spread_ratio'] < 0.8
+        
+        # Up/Down close
+        df['Up_close'] = (df['Close'] - df['Low']) / df['Spread'] > 0.7
+        df['Down_close'] = (df['Close'] - df['Low']) / df['Spread'] < 0.3
+        
+        # VSA patterns
+        df['Accumulation'] = (df['High_volume'] & df['Narrow_spread'] & df['Up_close'])
+        df['Distribution'] = (df['High_volume'] & df['Narrow_spread'] & df['Down_close'])
+        df['Weakness'] = (df['High_volume'] & df['Wide_spread'] & df['Down_close'])
+        df['Strength'] = (df['High_volume'] & df['Wide_spread'] & df['Up_close'])
+        
+        self.data = df
+        print("Volume Spread Analysis completed")
+    
+    def wyckoff_analysis(self):
+        """Perform Wyckoff Smart Money Analysis"""
+        df = self.data.copy()
+        
+        # Price and volume moving averages for context
+        df['Price_MA50'] = df['Close'].rolling(window=50).mean()
+        df['Volume_MA50'] = df['Volume'].rolling(window=50).mean()
+        
+        # Wyckoff phases detection
+        df['High_volume_phase'] = df['Volume'] > (df['Volume_MA50'] * 1.5)
+        df['Low_volume_phase'] = df['Volume'] < (df['Volume_MA50'] * 0.7)
+        
+        # Price action context
+        df['Uptrend'] = df['Close'] > df['Price_MA50']
+        df['Downtrend'] = df['Close'] < df['Price_MA50']
+        
+        # Smart money phases
+        # Accumulation phase
+        df['Accumulation_phase'] = (
+            df['Low_volume_phase'] & 
+            df['Downtrend'] & 
+            (df['Close'].rolling(10).std() < df['Close'].rolling(50).std())
+        )
+        
+        # Markup phase
+        df['Markup_phase'] = (
+            df['High_volume_phase'] & 
+            df['Uptrend'] & 
+            (df['Close'] > df['Close'].shift(5))
+        )
+        
+        # Distribution phase
+        df['Distribution_phase'] = (
+            df['Low_volume_phase'] & 
+            df['Uptrend'] & 
+            (df['Close'].rolling(10).std() < df['Close'].rolling(50).std())
+        )
+        
+        # Markdown phase
+        df['Markdown_phase'] = (
+            df['High_volume_phase'] & 
+            df['Downtrend'] & 
+            (df['Close'] < df['Close'].shift(5))
+        )
+        
+        # Spring analysis (potential reversal points)
+        df['Spring_candidate'] = (
+            (df['Low'] < df['Low'].rolling(20).min().shift(1)) & 
+            (df['Close'] > df['Low']) & 
+            (df['Volume'] > df['Volume_MA50'])
+        )
+        
+        self.data = df
+        print("Wyckoff analysis completed")
+    
+    def liquidity_analysis(self):
+        """Perform liquidity and trap analysis"""
+        df = self.data.copy()
+        
+        # Liquidity zones (support/resistance levels)
+        df['Support_level'] = df['Low'].rolling(window=20, center=True).min()
+        df['Resistance_level'] = df['High'].rolling(window=20, center=True).max()
+        
+        # Liquidity breaks
+        df['Support_break'] = df['Low'] < df['Support_level'].shift(1)
+        df['Resistance_break'] = df['High'] > df['Resistance_level'].shift(1)
+        
+        # Trap strength analysis
+        # Bull trap: High volume break above resistance followed by quick reversal
+        df['Bull_trap'] = (
+            df['Resistance_break'] & 
+            (df['Volume'] > df['Volume'].rolling(20).mean() * 1.5) &
+            (df['Close'].shift(-1) < df['Close']) &
+            (df['Close'].shift(-2) < df['Close'])
+        )
+        
+        # Bear trap: High volume break below support followed by quick reversal
+        df['Bear_trap'] = (
+            df['Support_break'] & 
+            (df['Volume'] > df['Volume'].rolling(20).mean() * 1.5) &
+            (df['Close'].shift(-1) > df['Close']) &
+            (df['Close'].shift(-2) > df['Close'])
+        )
+        
+        # Liquidity grab patterns
+        df['Liquidity_grab_up'] = (
+            (df['High'] > df['High'].rolling(10).max().shift(1)) &
+            (df['Close'] < df['Open']) &
+            (df['Volume'] > df['Volume'].rolling(20).mean())
+        )
+        
+        df['Liquidity_grab_down'] = (
+            (df['Low'] < df['Low'].rolling(10).min().shift(1)) &
+            (df['Close'] > df['Open']) &
+            (df['Volume'] > df['Volume'].rolling(20).mean())
+        )
+        
+        self.data = df
+        print("Liquidity analysis completed")
+    
+    def prepare_features(self):
+        """Prepare features for machine learning"""
+        df = self.data.copy()
+        
+        # Remove any infinite or extremely large values
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.fillna(method='ffill').fillna(method='bfill')
+        
+        # Select features for ML
+        feature_columns = [
+            'Open', 'High', 'Low', 'Volume', 'Change', 'Ch(%)',
+            'MACD', 'MACD_signal', 'MACD_histogram', 'RSI',
+            'BB_upper', 'BB_lower', 'BB_width', 'BB_position',
+            'MA_5', 'MA_10', 'MA_20', 'MA_50', 'MA_100', 'MA_200',
+            'MA_5_slope', 'MA_10_slope', 'MA_20_slope',
+            'Volume_ratio', 'Price_momentum_1', 'Price_momentum_5',
+            'Price_momentum_10', 'Price_momentum_20', 'Volatility', 'ATR',
+            'Stoch_K', 'Stoch_D', 'Spread_ratio',
+            'High_volume', 'Wide_spread', 'Up_close', 'Down_close',
+            'Accumulation', 'Distribution', 'Weakness', 'Strength',
+            'Accumulation_phase', 'Markup_phase', 'Distribution_phase', 'Markdown_phase',
+            'Spring_candidate', 'Bull_trap', 'Bear_trap',
+            'Liquidity_grab_up', 'Liquidity_grab_down'
+        ]
+        
+        # Filter existing columns
+        existing_features = [col for col in feature_columns if col in df.columns]
+        
+        # Convert boolean columns to int
+        for col in existing_features:
+            if df[col].dtype == bool:
+                df[col] = df[col].astype(int)
+        
+        self.features = df[existing_features].copy()
+        
+        # Create target variables
+        self.features['Next_Close'] = df['Close'].shift(-1)
+        self.features['Next_High'] = df['High'].shift(-1)
+        self.features['Next_Low'] = df['Low'].shift(-1)
+        self.features['Next_Volume'] = df['Volume'].shift(-1)
+        
+        # Price direction (1 for up, 0 for down)
+        self.features['Price_Direction'] = (self.features['Next_Close'] > df['Close']).astype(int)
+        
+        # Remove last row (no target)
+        self.features = self.features[:-1]
+        
+        print(f"Features prepared. Shape: {self.features.shape}")
+        print(f"Features: {list(self.features.columns)}")
+    
+    def train_ml_models(self):
+        """Train various machine learning models"""
+        if self.features is None:
+            print("Please prepare features first")
+            return
+        
+        # Prepare data
+        feature_cols = [col for col in self.features.columns if not col.startswith('Next_') and col != 'Price_Direction']
+        X = self.features[feature_cols].fillna(0)
+        
+        # Different targets
+        targets = {
+            'price': 'Next_Close',
+            'volume': 'Next_Volume',
+            'direction': 'Price_Direction'
+        }
+        
+        # Time series split for proper validation
+        tscv = TimeSeriesSplit(n_splits=5)
+        
+        for target_name, target_col in targets.items():
+            print(f"\nTraining models for {target_name} prediction...")
+            
+            y = self.features[target_col].fillna(method='ffill')
+            
+            # Split data
+            split_idx = int(len(X) * 0.8)
+            X_train, X_test = X[:split_idx], X[split_idx:]
+            y_train, y_test = y[:split_idx], y[split_idx:]
+            
+            # Scale features
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
+            
+            self.scalers[target_name] = scaler
+            
+            # Models to train
+            models = {
+                'RandomForest': RandomForestRegressor(n_estimators=100, random_state=42),
+                'GradientBoosting': GradientBoostingRegressor(n_estimators=100, random_state=42),
+                'XGBoost': xgb.XGBRegressor(n_estimators=100, random_state=42),
+                'Ridge': Ridge(alpha=1.0)
+            }
+            
+            best_model = None
+            best_score = -np.inf
+            
+            for model_name, model in models.items():
+                try:
+                    # Train model
+                    if model_name in ['Ridge']:
+                        model.fit(X_train_scaled, y_train)
+                        y_pred = model.predict(X_test_scaled)
+                    else:
+                        model.fit(X_train, y_train)
+                        y_pred = model.predict(X_test)
+                    
+                    # Evaluate
+                    if target_name == 'direction':
+                        from sklearn.metrics import accuracy_score
+                        score = accuracy_score(y_test, (y_pred > 0.5).astype(int))
+                        print(f"{model_name} - Accuracy: {score:.4f}")
+                    else:
+                        score = r2_score(y_test, y_pred)
+                        mae = mean_absolute_error(y_test, y_pred)
+                        print(f"{model_name} - R2: {score:.4f}, MAE: {mae:.4f}")
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_model = model
+                        
+                except Exception as e:
+                    print(f"Error training {model_name}: {str(e)}")
+            
+            self.models[target_name] = best_model
+        
+        print("\nMachine learning models trained successfully")
+    
+    def train_deep_learning_model(self, sequence_length=60):
+        """Train LSTM/GRU model for price prediction"""
+        if not DEEP_LEARNING_AVAILABLE:
+            print("Deep learning not available. Please install TensorFlow.")
+            return
+        
+        if self.features is None:
+            print("Please prepare features first")
+            return
+        
+        print("Training deep learning model...")
+        
+        # Prepare sequence data
+        feature_cols = [col for col in self.features.columns if not col.startswith('Next_') and col != 'Price_Direction']
+        data = self.features[feature_cols + ['Next_Close']].fillna(method='ffill').values
+        
+        # Scale data
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(data)
+        self.scalers['deep_learning'] = scaler
+        
+        # Create sequences
+        X, y = [], []
+        for i in range(sequence_length, len(scaled_data)):
+            X.append(scaled_data[i-sequence_length:i, :-1])  # All features except target
+            y.append(scaled_data[i, -1])  # Target (Next_Close)
+        
+        X, y = np.array(X), np.array(y)
+        
+        # Split data
+        split_idx = int(len(X) * 0.8)
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+        
+        # Build LSTM model
+        model = Sequential([
+            LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])),
+            Dropout(0.2),
+            LSTM(50, return_sequences=True),
+            Dropout(0.2),
+            LSTM(50),
+            Dropout(0.2),
+            Dense(25),
+            Dense(1)
+        ])
+        
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+        
+        # Train model
+        history = model.fit(
+            X_train, y_train,
+            batch_size=32,
+            epochs=50,
+            validation_data=(X_test, y_test),
+            verbose=0
+        )
+        
+        # Evaluate
+        train_score = model.evaluate(X_train, y_train, verbose=0)
+        test_score = model.evaluate(X_test, y_test, verbose=0)
+        
+        print(f"Deep Learning Model - Train Loss: {train_score[0]:.4f}, Test Loss: {test_score[0]:.4f}")
+        
+        self.models['deep_learning'] = model
+        self.models['dl_sequence_length'] = sequence_length
+    
+    def make_predictions(self):
+        """Make predictions using trained models"""
+        if not self.models:
+            print("Please train models first")
+            return
+        
+        print("Making predictions...")
+        
+        # Prepare latest data for prediction
+        feature_cols = [col for col in self.features.columns if not col.startswith('Next_') and col != 'Price_Direction']
+        latest_data = self.features[feature_cols].iloc[-1:].fillna(0)
+        
+        predictions = {}
+        
+        # ML predictions
+        for target_name, model in self.models.items():
+            if target_name == 'deep_learning' or target_name == 'dl_sequence_length':
+                continue
+                
+            try:
+                if target_name in self.scalers:
+                    scaled_data = self.scalers[target_name].transform(latest_data)
+                    pred = model.predict(scaled_data)[0]
+                else:
+                    pred = model.predict(latest_data)[0]
+                
+                predictions[target_name] = pred
+            except Exception as e:
+                print(f"Error making prediction for {target_name}: {str(e)}")
+        
+        # Deep learning prediction
+        if 'deep_learning' in self.models and DEEP_LEARNING_AVAILABLE:
+            try:
+                seq_length = self.models['dl_sequence_length']
+                scaler = self.scalers['deep_learning']
+                
+                # Prepare sequence
+                recent_data = self.features[feature_cols].iloc[-seq_length:].fillna(method='ffill')
+                scaled_recent = scaler.transform(recent_data.values.reshape(-1, recent_data.shape[1]))
+                
+                X_pred = scaled_recent.reshape(1, seq_length, recent_data.shape[1])
+                dl_pred = self.models['deep_learning'].predict(X_pred, verbose=0)[0][0]
+                
+                # Inverse transform
+                dummy_array = np.zeros((1, scaler.n_features_in_))
+                dummy_array[0, -1] = dl_pred
+                dl_pred_unscaled = scaler.inverse_transform(dummy_array)[0, -1]
+                
+                predictions['deep_learning_price'] = dl_pred_unscaled
+            except Exception as e:
+                print(f"Error making deep learning prediction: {str(e)}")
+        
+        self.predictions = predictions
+        return predictions
+    
+    def generate_trading_signals(self):
+        """Generate comprehensive trading signals"""
+        if self.data is None:
+            print("Please load data first")
+            return
+        
+        df = self.data.copy()
+        latest = df.iloc[-1]
+        
+        signals = {
+            'timestamp': latest.name,
+            'current_price': latest['Close'],
+            'technical_signals': {},
+            'volume_signals': {},
+            'wyckoff_signals': {},
+            'liquidity_signals': {},
+            'overall_sentiment': 'NEUTRAL'
+        }
+        
+        # Technical signals
+        if latest['RSI'] > 70:
+            signals['technical_signals']['RSI'] = 'OVERBOUGHT'
+        elif latest['RSI'] < 30:
+            signals['technical_signals']['RSI'] = 'OVERSOLD'
+        else:
+            signals['technical_signals']['RSI'] = 'NEUTRAL'
+        
+        if latest['MACD'] > latest['MACD_signal']:
+            signals['technical_signals']['MACD'] = 'BULLISH'
+        else:
+            signals['technical_signals']['MACD'] = 'BEARISH'
+        
+        if latest['Close'] > latest['BB_upper']:
+            signals['technical_signals']['Bollinger'] = 'OVERBOUGHT'
+        elif latest['Close'] < latest['BB_lower']:
+            signals['technical_signals']['Bollinger'] = 'OVERSOLD'
+        else:
+            signals['technical_signals']['Bollinger'] = 'NEUTRAL'
+        
+        # Volume signals
+        if latest['Volume_ratio'] > 1.5:
+            signals['volume_signals']['Volume'] = 'HIGH'
+        elif latest['Volume_ratio'] < 0.5:
+            signals['volume_signals']['Volume'] = 'LOW'
+        else:
+            signals['volume_signals']['Volume'] = 'NORMAL'
+        
+        # VSA signals
+        if latest['Accumulation']:
+            signals['volume_signals']['VSA'] = 'ACCUMULATION'
+        elif latest['Distribution']:
+            signals['volume_signals']['VSA'] = 'DISTRIBUTION'
+        elif latest['Strength']:
+            signals['volume_signals']['VSA'] = 'STRENGTH'
+        elif latest['Weakness']:
+            signals['volume_signals']['VSA'] = 'WEAKNESS'
+        else:
+            signals['volume_signals']['VSA'] = 'NEUTRAL'
+        
+        # Wyckoff signals
+        if latest['Accumulation_phase']:
+            signals['wyckoff_signals']['Phase'] = 'ACCUMULATION'
+        elif latest['Markup_phase']:
+            signals['wyckoff_signals']['Phase'] = 'MARKUP'
+        elif latest['Distribution_phase']:
+            signals['wyckoff_signals']['Phase'] = 'DISTRIBUTION'
+        elif latest['Markdown_phase']:
+            signals['wyckoff_signals']['Phase'] = 'MARKDOWN'
+        else:
+            signals['wyckoff_signals']['Phase'] = 'TRANSITION'
+        
+        # Liquidity signals
+        trap_signals = []
+        if latest['Bull_trap']:
+            trap_signals.append('BULL_TRAP')
+        if latest['Bear_trap']:
+            trap_signals.append('BEAR_TRAP')
+        if latest['Liquidity_grab_up']:
+            trap_signals.append('LIQUIDITY_GRAB_UP')
+        if latest['Liquidity_grab_down']:
+            trap_signals.append('LIQUIDITY_GRAB_DOWN')
+        
+        signals['liquidity_signals']['Traps'] = trap_signals if trap_signals else ['NONE']
+        
+        # Overall sentiment
+        bullish_count = 0
+        bearish_count = 0
+        
+        # Count bullish/bearish signals
+        if signals['technical_signals']['RSI'] == 'OVERSOLD':
+            bullish_count += 1
+        elif signals['technical_signals']['RSI'] == 'OVERBOUGHT':
+            bearish_count += 1
+            
+        if signals['technical_signals']['MACD'] == 'BULLISH':
+            bullish_count += 1
+        else:
+            bearish_count += 1
+            
+        if signals['volume_signals']['VSA'] in ['ACCUMULATION', 'STRENGTH']:
+            bullish_count += 1
+        elif signals['volume_signals']['VSA'] in ['DISTRIBUTION', 'WEAKNESS']:
+            bearish_count += 1
+        
+        if bullish_count > bearish_count:
+            signals['overall_sentiment'] = 'BULLISH'
+        elif bearish_count > bullish_count:
+            signals['overall_sentiment'] = 'BEARISH'
+        
+        return signals
+    
+    def create_comprehensive_report(self):
+        """Create a comprehensive analysis report"""
+        if self.data is None or self.predictions is None:
+            print("Please load data and make predictions first")
+            return
+        
+        report = {
+            'analysis_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'data_period': f"{self.data.index[0].strftime('%Y-%m-%d')} to {self.data.index[-1].strftime('%Y-%m-%d')}",
+            'total_trading_days': len(self.data),
+            'current_market_data': {},
+            'predictions': self.predictions,
+            'trading_signals': self.generate_trading_signals(),
+            'risk_assessment': {},
+            'recommendations': []
+        }
+        
+        # Current market data
+        latest = self.data.iloc[-1]
+        report['current_market_data'] = {
+            'price': latest['Close'],
+            'volume': latest['Volume'],
+            'rsi': latest['RSI'],
+            'macd': latest['MACD'],
+            'volatility': latest['Volatility'],
+            'volume_ratio': latest['Volume_ratio']
+        }
+        
+        # Risk assessment
+        volatility_20d = self.data['Close'].pct_change().rolling(20).std() * np.sqrt(252) * 100
+        report['risk_assessment'] = {
+            'current_volatility_annualized': f"{volatility_20d.iloc[-1]:.2f}%",
+            'risk_level': 'HIGH' if volatility_20d.iloc[-1] > 30 else 'MEDIUM' if volatility_20d.iloc[-1] > 15 else 'LOW'
+        }
+        
+        # Generate recommendations
+        signals = report['trading_signals']
+        recommendations = []
+        
+        if signals['overall_sentiment'] == 'BULLISH':
+            recommendations.append("Consider long positions with proper risk management")
+        elif signals['overall_sentiment'] == 'BEARISH':
+            recommendations.append("Consider short positions or avoid new long positions")
+        else:
+            recommendations.append("Wait for clearer directional signals")
+        
+        if signals['volume_signals']['Volume'] == 'HIGH':
+            recommendations.append("High volume suggests strong conviction in current move")
+        
+        if 'BULL_TRAP' in signals['liquidity_signals']['Traps']:
+            recommendations.append("Warning: Potential bull trap detected - exercise caution on long positions")
+        
+        if 'BEAR_TRAP' in signals['liquidity_signals']['Traps']:
+            recommendations.append("Warning: Potential bear trap detected - be cautious on short positions")
+        
+        if signals['wyckoff_signals']['Phase'] == 'ACCUMULATION':
+            recommendations.append("Smart money may be accumulating - consider gradual position building")
+        elif signals['wyckoff_signals']['Phase'] == 'DISTRIBUTION':
+            recommendations.append("Smart money may be distributing - consider profit taking")
+        
+        report['recommendations'] = recommendations
+        
+        return report
+    
+    def plot_comprehensive_analysis(self, save_path=None):
+        """Create comprehensive visualization of the analysis"""
+        if self.data is None:
+            print("Please load data first")
+            return
+        
+        fig, axes = plt.subplots(5, 1, figsize=(15, 20))
+        
+        # 1. Price and Moving Averages
+        axes[0].plot(self.data.index, self.data['Close'], label='Close Price', linewidth=2)
+        axes[0].plot(self.data.index, self.data['MA_20'], label='MA 20', alpha=0.7)
+        axes[0].plot(self.data.index, self.data['MA_50'], label='MA 50', alpha=0.7)
+        axes[0].fill_between(self.data.index, self.data['BB_lower'], self.data['BB_upper'], 
+                           alpha=0.2, label='Bollinger Bands')
+        axes[0].set_title('Price Action with Moving Averages and Bollinger Bands')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
+        
+        # 2. Volume Analysis
+        axes[1].bar(self.data.index, self.data['Volume'], alpha=0.6, label='Volume')
+        axes[1].plot(self.data.index, self.data['Volume_MA'], color='red', label='Volume MA')
+        
+        # Mark accumulation/distribution
+        acc_dates = self.data[self.data['Accumulation']].index
+        dist_dates = self.data[self.data['Distribution']].index
+        
+        if len(acc_dates) > 0:
+            axes[1].scatter(acc_dates, self.data.loc[acc_dates, 'Volume'], 
+                          color='green', s=50, label='Accumulation', alpha=0.8)
+        if len(dist_dates) > 0:
+            axes[1].scatter(dist_dates, self.data.loc[dist_dates, 'Volume'], 
+                          color='red', s=50, label='Distribution', alpha=0.8)
+        
+        axes[1].set_title('Volume Analysis with VSA Signals')
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
+        
+        # 3. MACD
+        axes[2].plot(self.data.index, self.data['MACD'], label='MACD', linewidth=2)
+        axes[2].plot(self.data.index, self.data['MACD_signal'], label='Signal', linewidth=2)
+        axes[2].bar(self.data.index, self.data['MACD_histogram'], alpha=0.6, label='Histogram')
+        axes[2].axhline(y=0, color='black', linestyle='-', alpha=0.3)
+        axes[2].set_title('MACD Analysis')
+        axes[2].legend()
+        axes[2].grid(True, alpha=0.3)
+        
+        # 4. RSI
+        axes[3].plot(self.data.index, self.data['RSI'], label='RSI', linewidth=2, color='purple')
+        axes[3].axhline(y=70, color='red', linestyle='--', alpha=0.7, label='Overbought')
+        axes[3].axhline(y=30, color='green', linestyle='--', alpha=0.7, label='Oversold')
+        axes[3].axhline(y=50, color='black', linestyle='-', alpha=0.3)
+        axes[3].fill_between(self.data.index, 30, 70, alpha=0.1)
+        axes[3].set_ylim(0, 100)
+        axes[3].set_title('RSI (Relative Strength Index)')
+        axes[3].legend()
+        axes[3].grid(True, alpha=0.3)
+        
+        # 5. Wyckoff Phases
+        phase_colors = {'Accumulation_phase': 'green', 'Markup_phase': 'blue', 
+                       'Distribution_phase': 'red', 'Markdown_phase': 'orange'}
+        
+        for phase, color in phase_colors.items():
+            phase_dates = self.data[self.data[phase]].index
+            if len(phase_dates) > 0:
+                axes[4].scatter(phase_dates, [1]*len(phase_dates), 
+                              color=color, label=phase.replace('_', ' ').title(), 
+                              s=100, alpha=0.8)
+        
+        # Add liquidity grabs
+        liq_up_dates = self.data[self.data['Liquidity_grab_up']].index
+        liq_down_dates = self.data[self.data['Liquidity_grab_down']].index
+        
+        if len(liq_up_dates) > 0:
+            axes[4].scatter(liq_up_dates, [0.5]*len(liq_up_dates), 
+                          color='cyan', marker='^', s=80, label='Liquidity Grab Up', alpha=0.8)
+        if len(liq_down_dates) > 0:
+            axes[4].scatter(liq_down_dates, [0.5]*len(liq_down_dates), 
+                          color='magenta', marker='v', s=80, label='Liquidity Grab Down', alpha=0.8)
+        
+        axes[4].set_ylim(0, 1.5)
+        axes[4].set_title('Wyckoff Phases and Liquidity Analysis')
+        axes[4].legend()
+        axes[4].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Analysis chart saved to {save_path}")
+        
+        plt.show()
+    
+    def run_complete_analysis(self, csv_file_path=None, generate_report=True, create_plots=True):
+        """Run the complete analysis pipeline"""
+        print("=== Professional Stock Market AI Agent ===")
+        print("Starting comprehensive analysis...\n")
+        
+        # Step 1: Load and preprocess data
+        print("Step 1: Loading and preprocessing data...")
+        if not self.load_and_preprocess_data(csv_file_path):
+            print("Failed to load data. Analysis cannot proceed.")
+            return None
+        
+        # Confirm data is ready
+        print(f"\nData Summary:")
+        print(f"• Total trading days: {len(self.data)}")
+        print(f"• Date range: {self.data.index[0].strftime('%Y-%m-%d')} to {self.data.index[-1].strftime('%Y-%m-%d')}")
+        print(f"• Price range: ${self.data['Close'].min():.2f} - ${self.data['Close'].max():.2f}")
+        print(f"• Average volume: {self.data['Volume'].mean():,.0f}")
+        
+        # Ask for confirmation to proceed
+        proceed = input(f"\nData loaded successfully. Proceed with analysis? (y/n): ").strip().lower()
+        if proceed != 'y':
+            print("Analysis cancelled by user.")
+            return None
+        
+        # Step 2: Calculate technical indicators
+        print("\nStep 2: Calculating technical indicators...")
+        self.calculate_technical_indicators()
+        
+        # Step 3: Perform volume analysis
+        print("\nStep 3: Performing volume spread analysis...")
+        self.volume_spread_analysis()
+        
+        # Step 4: Wyckoff analysis
+        print("\nStep 4: Performing Wyckoff smart money analysis...")
+        self.wyckoff_analysis()
+        
+        # Step 5: Liquidity analysis
+        print("\nStep 5: Performing liquidity and trap analysis...")
+        self.liquidity_analysis()
+        
+        # Step 6: Prepare features
+        print("\nStep 6: Preparing features for machine learning...")
+        self.prepare_features()
+        
+        # Step 7: Train ML models
+        print("\nStep 7: Training machine learning models...")
+        self.train_ml_models()
+        
+        # Step 8: Train deep learning model (if available)
+        if DEEP_LEARNING_AVAILABLE:
+            print("\nStep 8: Training deep learning model...")
+            try:
+                self.train_deep_learning_model()
+            except Exception as e:
+                print(f"Deep learning training failed: {str(e)}")
+        else:
+            print("\nStep 8: Skipping deep learning (TensorFlow not available)")
+        
+        # Step 9: Make predictions
+        print("\nStep 9: Making predictions...")
+        predictions = self.make_predictions()
+        
+        # Step 10: Generate report
+        if generate_report:
+            print("\nStep 10: Generating comprehensive report...")
+            report = self.create_comprehensive_report()
+            
+            # Print summary
+            print("\n" + "="*60)
+            print("ANALYSIS SUMMARY")
+            print("="*60)
+            print(f"Analysis Date: {report['analysis_date']}")
+            print(f"Data Period: {report['data_period']}")
+            print(f"Current Price: ${report['current_market_data']['price']:.2f}")
+            print(f"Overall Sentiment: {report['trading_signals']['overall_sentiment']}")
+            print(f"Risk Level: {report['risk_assessment']['risk_level']}")
+            
+            print(f"\nCurrent Technical Indicators:")
+            print(f"  RSI: {report['current_market_data']['rsi']:.2f} ({report['trading_signals']['technical_signals']['RSI']})")
+            print(f"  MACD: {report['current_market_data']['macd']:.4f} ({report['trading_signals']['technical_signals']['MACD']})")
+            print(f"  Volume Ratio: {report['current_market_data']['volume_ratio']:.2f}")
+            
+            print(f"\nWyckoff Phase: {report['trading_signals']['wyckoff_signals']['Phase']}")
+            print(f"VSA Signal: {report['trading_signals']['volume_signals']['VSA']}")
+            
+            if predictions:
+                print(f"\nPredictions:")
+                for pred_type, value in predictions.items():
+                    if pred_type == 'price':
+                        print(f"  Next Close Price: ${value:.2f}")
+                    elif pred_type == 'direction':
+                        direction = "UP" if value > 0.5 else "DOWN"
+                        confidence = abs(value - 0.5) * 200
+                        print(f"  Price Direction: {direction} (Confidence: {confidence:.1f}%)")
+                    elif pred_type == 'volume':
+                        print(f"  Next Volume: {value:,.0f}")
+                    elif pred_type == 'deep_learning_price':
+                        print(f"  Deep Learning Price: ${value:.2f}")
+            
+            print(f"\nKey Recommendations:")
+            for i, rec in enumerate(report['recommendations'], 1):
+                print(f"  {i}. {rec}")
+            
+            print("="*60)
+            
+            if create_plots:
+                print("\nStep 11: Creating visualization...")
+                try:
+                    self.plot_comprehensive_analysis()
+                except Exception as e:
+                    print(f"Error creating plots: {str(e)}")
+            
+            return report
+        
+        return predictions
+
+# Example usage and testing functions
+def example_usage():
+    """Example of how to use the AI agent"""
+    print("Example usage of Professional Stock Market AI Agent:")
+    print("""
+    # Initialize the agent
+    agent = StockMarketAIAgent()
+    
+    # Run complete analysis
+    report = agent.run_complete_analysis('your_stock_data.csv')
+    
+    # Or run individual components:
+    agent.load_and_preprocess_data('your_stock_data.csv')
+    agent.calculate_technical_indicators()
+    agent.volume_spread_analysis()
+    agent.wyckoff_analysis()
+    agent.liquidity_analysis()
+    agent.prepare_features()
+    agent.train_ml_models()
+    agent.train_deep_learning_model()  # If TensorFlow available
+    predictions = agent.make_predictions()
+    
+    # Generate trading signals
+    signals = agent.generate_trading_signals()
+    
+    # Create comprehensive report
+    report = agent.create_comprehensive_report()
+    
+    # Create visualizations
+    agent.plot_comprehensive_analysis(save_path='analysis_chart.png')
+    """)
+
+def create_sample_data():
+    """Create sample data for testing"""
+    print("Creating sample data for testing...")
+    
+    # Generate sample stock data
+    np.random.seed(42)
+    dates = pd.date_range(start='2023-01-01', periods=300, freq='D')
+    
+    # Simulate realistic stock data
+    base_price = 100
+    prices = [base_price]
+    volumes = []
+    
+    for i in range(299):
+        # Price with trend and volatility
+        trend = 0.001  # Slight upward trend
+        volatility = 0.02
+        change = np.random.normal(trend, volatility)
+        new_price = prices[-1] * (1 + change)
+        prices.append(max(new_price, 1))  # Ensure positive prices
+        
+        # Volume with some correlation to price changes
+        base_volume = 1000000
+        volume_change = abs(change) * 2 + np.random.normal(0, 0.3)
+        volume = int(base_volume * (1 + volume_change))
+        volumes.append(max(volume, 10000))
+    
+    # Create OHLC data
+    df = pd.DataFrame({
+        'Date': [int(d.timestamp() * 1000) for d in dates],  # Milliseconds
+        'Open': [p * (1 + np.random.normal(0, 0.005)) for p in prices[:-1]],
+        'High': [p * (1 + abs(np.random.normal(0, 0.01))) for p in prices[:-1]],
+        'Low': [p * (1 - abs(np.random.normal(0, 0.01))) for p in prices[:-1]],
+        'Close': prices[:-1],
+        'Volume': volumes,
+        'Change': [0] + [prices[i] - prices[i-1] for i in range(1, len(prices)-1)],
+        'Ch(%)': [0] + [((prices[i] - prices[i-1]) / prices[i-1]) * 100 for i in range(1, len(prices)-1)],
+        'Value(cr)': [v * p / 10000000 for v, p in zip(volumes, prices[:-1])],
+        'Trade': [np.random.randint(5000, 20000) for _ in range(300)]
+    })
+    
+    # Ensure High >= Low and Close is between High and Low
+    for i in range(len(df)):
+        if df.loc[i, 'High'] < df.loc[i, 'Low']:
+            df.loc[i, 'High'], df.loc[i, 'Low'] = df.loc[i, 'Low'], df.loc[i, 'High']
+        
+        df.loc[i, 'Close'] = max(min(df.loc[i, 'Close'], df.loc[i, 'High']), df.loc[i, 'Low'])
+        df.loc[i, 'Open'] = max(min(df.loc[i, 'Open'], df.loc[i, 'High']), df.loc[i, 'Low'])
+    
+    df.to_csv('sample_stock_data.csv', index=False)
+    print("Sample data created: sample_stock_data.csv")
+    return 'sample_stock_data.csv'
+
+# Main execution
+if __name__ == "__main__":
+    print("\n" + "="*80)
+    print("PROFESSIONAL INSTITUTIONAL GRADE STOCK MARKET AI AGENT")
+    print("="*80)
+    print("Welcome! This AI agent will analyze your stock data comprehensively.")
+    print("It will perform technical analysis, volume analysis, Wyckoff analysis,")
+    print("machine learning predictions, and generate professional reports.")
+    
+    # Initialize the AI agent
+    agent = StockMarketAIAgent()
+    
+    try:
+        # Run complete analysis - will automatically prompt for file selection
+        print(f"\nStarting analysis...")
+        report = agent.run_complete_analysis()
+        
+        if report:
+            print(f"\n🎉 Analysis completed successfully!")
+            print(f"The AI agent has performed comprehensive analysis including:")
+            print(f"✓ Technical Analysis (MACD, RSI, Bollinger Bands, etc.)")
+            print(f"✓ Volume Spread Analysis (VSA)")
+            print(f"✓ Wyckoff Smart Money Analysis")
+            print(f"✓ Liquidity and Trap Analysis")
+            print(f"✓ Machine Learning Predictions")
+            if DEEP_LEARNING_AVAILABLE:
+                print(f"✓ Deep Learning (LSTM) Predictions")
+            print(f"✓ Comprehensive Trading Signals")
+            print(f"✓ Risk Assessment")
+            print(f"✓ Professional Visualizations")
+            
+            # Ask if user wants to save the report
+            save_report = input(f"\nWould you like to save the analysis report to a file? (y/n): ").strip().lower()
+            if save_report == 'y':
+                import json
+                filename = f"stock_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                with open(filename, 'w') as f:
+                    # Convert numpy types to native Python types for JSON serialization
+                    report_copy = {}
+                    for key, value in report.items():
+                        if isinstance(value, dict):
+                            report_copy[key] = {k: float(v) if isinstance(v, (np.integer, np.floating)) else v 
+                                              for k, v in value.items()}
+                        else:
+                            report_copy[key] = value
+                    json.dump(report_copy, f, indent=2, default=str)
+                print(f"Report saved as: {filename}")
+        else:
+            print("Analysis was not completed. Please check your data and try again.")
+        
+    except KeyboardInterrupt:
+        print(f"\n\nAnalysis cancelled by user.")
+    except Exception as e:
+        print(f"Error during analysis: {str(e)}")
+        print("Please check your data format and try again.")
+    
+    print(f"\n" + "="*80)
+    print(f"Thank you for using the Professional Stock Market AI Agent!")
+    print(f"For best results, ensure your CSV has the following columns:")
+    print(f"Date, Close, Volume, Change, Ch(%), Value(cr), Trade, Open, High, Low")
+    print(f"The Date column should be in milliseconds format.")
+    print(f"=" * 80)
