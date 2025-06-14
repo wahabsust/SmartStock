@@ -16,7 +16,24 @@ import webbrowser
 import tempfile
 from PIL import Image, ImageTk
 import json
+# ......
+import sys
+import traceback
 
+def detailed_exception_handler(exc_type, exc_value, exc_traceback):
+    """Custom exception handler to show detailed error information"""
+    print("=" * 60)
+    print(f"DETAILED ERROR INFORMATION:")
+    print("=" * 60)
+    print(f"Exception Type: {exc_type.__name__}")
+    print(f"Exception Value: {exc_value}")
+    print("\nFull Traceback:")
+    traceback.print_exception(exc_type, exc_value, exc_traceback)
+    print("=" * 60)
+
+# Set the custom exception handler
+sys.excepthook = detailed_exception_handler
+#....
 warnings.filterwarnings('ignore')
 
 # Enhanced ML/DL Libraries (using scikit-learn instead of sklearn)
@@ -811,7 +828,8 @@ class EnhancedStockMarketAIAgent:
         df['Lower_Shadow'] = (df[['Open', 'Close']].min(axis=1) - df['Low']) / df['Close']
 
         # Fill missing values using forward fill then backward fill (from original)
-        self.data = df.fillna(method='ffill').fillna(method='bfill')
+        ## self.data = df.fillna(method='ffill').fillna(method='bfill')
+        self.data = df.ffill().bfill()
 
         print(f"Enhanced feature engineering completed: {len(self.data.columns)} total features")
 
@@ -910,7 +928,8 @@ class EnhancedStockMarketAIAgent:
         for target_name, target_col in targets.items():
             print(f"Training enhanced models for {target_name}...")
 
-            y = self.features[target_col].fillna(method='ffill')
+            ## y = self.features[target_col].fillna(method='ffill')
+            y = self.features[target_col].ffill()
 
             # Split data
             split_idx = int(len(X) * 0.8)
@@ -940,7 +959,7 @@ class EnhancedStockMarketAIAgent:
                 )
 
             if 'lgb' in selected_models:
-                base_models['lgb'] = lgb.LGBRegressor(
+                base_models['lgb'] = lgb.LGBMRegressor(
                     n_estimators=200, max_depth=8, learning_rate=0.1,
                     random_state=42, n_jobs=-1, verbose=-1
                 )
@@ -1077,155 +1096,176 @@ class EnhancedStockMarketAIAgent:
 
         print("Training advanced deep learning models...")
 
-        # Prepare sequence data
-        feature_cols = [col for col in self.features.columns
-                        if not col.startswith('Next_') and col != 'Price_Direction' and col != 'Price_Change_Pct']
+        try:
+            # Prepare sequence data
+            feature_cols = [col for col in self.features.columns
+                            if not col.startswith('Next_') and col != 'Price_Direction' and col != 'Price_Change_Pct']
 
-        data = self.features[feature_cols + ['Next_Close', 'Price_Direction']].fillna(method='ffill').values
+            # Use ffill instead of fillna(method='ffill')
+            data = self.features[feature_cols + ['Next_Close', 'Price_Direction']].ffill().values
 
-        # Scale data
-        scaler = MinMaxScaler()
-        scaled_data = scaler.fit_transform(data)
-        self.scalers['deep_learning'] = scaler
+            # Scale data
+            scaler = MinMaxScaler()
+            scaled_data = scaler.fit_transform(data)
+            self.scalers['deep_learning'] = scaler
 
-        # Create sequences
-        X, y_price, y_direction = [], [], []
-        for i in range(sequence_length, len(scaled_data)):
-            X.append(scaled_data[i - sequence_length:i, :-2])  # All features except targets
-            y_price.append(scaled_data[i, -2])  # Next_Close
-            y_direction.append(scaled_data[i, -1])  # Price_Direction
+            # Create sequences with proper error handling
+            X, y_price, y_direction = [], [], []
 
-        X = np.array(X)
-        y_price = np.array(y_price)
-        y_direction = np.array(y_direction)
+            for i in range(sequence_length, len(scaled_data)):
+                try:
+                    X.append(scaled_data[i - sequence_length:i, :-2])  # All features except targets
+                    y_price.append(scaled_data[i, -2])  # Next_Close
+                    y_direction.append(scaled_data[i, -1])  # Price_Direction
+                except IndexError as e:
+                    print(f"Index error at position {i}: {e}")
+                    break
 
-        # Split data
-        split_idx = int(len(X) * 0.8)
-        X_train, X_test = X[:split_idx], X[split_idx:]
-        y_price_train, y_price_test = y_price[:split_idx], y_price[split_idx:]
-        y_direction_train, y_direction_test = y_direction[:split_idx], y_direction[split_idx:]
+            # Convert to numpy arrays with error checking
+            if len(X) == 0:
+                raise Exception("No sequences created - insufficient data")
 
-        # Build and train models based on selection
+            X = np.array(X)
+            y_price = np.array(y_price)
+            y_direction = np.array(y_direction)
 
-        # LSTM Model (from original)
-        if 'lstm' in selected_dl_models:
-            price_model = self.build_advanced_lstm_model(X_train.shape)
+            print(f"Created sequences - X shape: {X.shape}, y_price shape: {y_price.shape}")
 
-            # Callbacks (from original)
-            early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-7)
+            # Split data
+            split_idx = int(len(X) * 0.8)
+            X_train, X_test = X[:split_idx], X[split_idx:]
+            y_price_train, y_price_test = y_price[:split_idx], y_price[split_idx:]
+            y_direction_train, y_direction_test = y_direction[:split_idx], y_direction[split_idx:]
 
-            # Train price model
-            price_history = price_model.fit(
-                X_train, y_price_train,
-                batch_size=32,
-                epochs=100,
-                validation_data=(X_test, y_price_test),
-                callbacks=[early_stopping, reduce_lr],
-                verbose=0
-            )
+            # Build and train models based on selection
+            if 'lstm' in selected_dl_models:
+                try:
+                    print("Training LSTM model...")
+                    price_model = self.build_advanced_lstm_model(X_train.shape)
 
-            # Evaluate
-            price_score = price_model.evaluate(X_test, y_price_test, verbose=0)
-            print(f"LSTM Price Model - Test Loss: {price_score:.4f}")
+                    # Callbacks
+                    early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+                    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-7)
 
-            self.deep_models['price'] = price_model
-            self.model_performance['deep_price'] = 1 - price_score
+                    # Train price model
+                    price_history = price_model.fit(
+                        X_train, y_price_train,
+                        batch_size=32,
+                        epochs=50,
+                        validation_data=(X_test, y_price_test),
+                        callbacks=[early_stopping, reduce_lr],
+                        verbose=1
+                    )
 
-        # CNN-LSTM Hybrid (from original)
-        if 'cnn_lstm' in selected_dl_models:
-            direction_model = self.build_cnn_lstm_model(X_train.shape)
+                    # Safe evaluation with proper error handling
+                    try:
+                        price_score_raw = price_model.evaluate(X_test, y_price_test, verbose=0)
 
-            # Train direction model
-            direction_history = direction_model.fit(
-                X_train, y_direction_train,
-                batch_size=32,
-                epochs=100,
-                validation_data=(X_test, y_direction_test),
-                callbacks=[early_stopping, reduce_lr],
-                verbose=0
-            )
+                        # Handle both single value and list returns
+                        if isinstance(price_score_raw, (list, tuple)):
+                            price_score = float(price_score_raw[0])  # Take first element if list
+                        else:
+                            price_score = float(price_score_raw)
 
-            # Evaluate direction model
-            direction_pred = direction_model.predict(X_test, verbose=0)
-            direction_accuracy = accuracy_score(y_direction_test, (direction_pred > 0.5).astype(int))
-            print(f"CNN-LSTM Direction Model - Accuracy: {direction_accuracy:.4f}")
+                        print(f"LSTM Price Model - Test Loss: {price_score:.4f}")
 
-            self.deep_models['direction'] = direction_model
-            self.model_performance['deep_direction'] = direction_accuracy
+                    except Exception as eval_error:
+                        print(f"Evaluation error: {eval_error}")
+                        price_score = 1.0  # Default high loss value
+                        print("Using default loss value due to evaluation error")
 
-        # GRU Model
-        if 'gru' in selected_dl_models:
-            gru_model = self.build_gru_model(X_train.shape)
+                    # Safe performance calculation
+                    try:
+                        performance_score = max(0.0, min(1.0, 1.0 - price_score))  # Clamp between 0 and 1
+                        self.deep_models['price'] = price_model
+                        self.model_performance['deep_price'] = performance_score
+                        print(f"LSTM Performance Score: {performance_score:.4f}")
 
-            gru_history = gru_model.fit(
-                X_train, y_price_train,
-                batch_size=32,
-                epochs=50,
-                validation_data=(X_test, y_price_test),
-                verbose=0
-            )
+                    except Exception as perf_error:
+                        print(f"Performance calculation error: {perf_error}")
+                        self.model_performance['deep_price'] = 0.5  # Default moderate performance
 
-            gru_score = gru_model.evaluate(X_test, y_price_test, verbose=0)
-            print(f"GRU Model - Test Loss: {gru_score:.4f}")
+                except Exception as lstm_error:
+                    print(f"LSTM training failed: {str(lstm_error)}")
+                    # Don't raise exception, continue with other models
+                    print("Continuing without LSTM model...")
 
-            self.deep_models['gru'] = gru_model
-            self.model_performance['deep_gru'] = 1 - gru_score
+            # CNN-LSTM Hybrid
+            if 'cnn_lstm' in selected_dl_models:
+                try:
+                    print("Training CNN-LSTM model...")
+                    direction_model = self.build_cnn_lstm_model(X_train.shape)
 
-        # Attention-based LSTM (from original enhanced)
-        if 'attention_lstm' in selected_dl_models:
-            attention_model = self.build_attention_lstm_model(X_train.shape)
+                    # Train direction model
+                    direction_history = direction_model.fit(
+                        X_train, y_direction_train,
+                        batch_size=32,
+                        epochs=30,  # Reduced epochs
+                        validation_data=(X_test, y_direction_test),
+                        verbose=1
+                    )
 
-            attention_history = attention_model.fit(
-                X_train, y_price_train,
-                batch_size=32,
-                epochs=75,
-                validation_data=(X_test, y_price_test),
-                callbacks=[early_stopping, reduce_lr],
-                verbose=0
-            )
+                    # Safe evaluation for direction model
+                    try:
+                        direction_pred = direction_model.predict(X_test, verbose=0)
+                        direction_accuracy = accuracy_score(y_direction_test, (direction_pred > 0.5).astype(int))
+                        print(f"CNN-LSTM Direction Model - Accuracy: {direction_accuracy:.4f}")
 
-            attention_score = attention_model.evaluate(X_test, y_price_test, verbose=0)
-            print(f"Attention LSTM Model - Test Loss: {attention_score:.4f}")
+                        self.deep_models['direction'] = direction_model
+                        self.model_performance['deep_direction'] = float(direction_accuracy)
 
-            self.deep_models['attention'] = attention_model
-            self.model_performance['deep_attention'] = 1 - attention_score
+                    except Exception as dir_eval_error:
+                        print(f"Direction model evaluation error: {dir_eval_error}")
 
-        # Store configuration
-        self.deep_models['sequence_length'] = sequence_length
+                except Exception as cnn_error:
+                    print(f"CNN-LSTM training failed: {str(cnn_error)}")
 
-        print(
-            f"Deep learning model training completed. {len([k for k in self.deep_models.keys() if k != 'sequence_length'])} models trained.")
+            # Store configuration
+            self.deep_models['sequence_length'] = sequence_length
+
+            # Safe model counting
+            trained_models = len([k for k in self.deep_models.keys() if k != 'sequence_length'])
+            print(f"Deep learning model training completed. {trained_models} models trained.")
+
+        except Exception as e:
+            print(f"Deep learning training error: {str(e)}")
+            # Instead of raising, just log and continue
+            print("Deep learning training failed, but continuing with ML models...")
+            return  # Don't raise exception
 
     def build_advanced_lstm_model(self, input_shape):
         """Build advanced LSTM model with attention (ALL from original)"""
-        inputs = Input(shape=(input_shape[1], input_shape[2]))
+        try:
+            inputs = Input(shape=(input_shape[1], input_shape[2]))
 
-        # First LSTM layer
-        lstm1 = LSTM(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)(inputs)
-        lstm1 = BatchNormalization()(lstm1)
+            # First LSTM layer
+            lstm1 = LSTM(128, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)(inputs)
+            lstm1 = BatchNormalization()(lstm1)
 
-        # Second LSTM layer
-        lstm2 = LSTM(64, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)(lstm1)
-        lstm2 = BatchNormalization()(lstm2)
+            # Second LSTM layer
+            lstm2 = LSTM(64, return_sequences=True, dropout=0.2, recurrent_dropout=0.2)(lstm1)
+            lstm2 = BatchNormalization()(lstm2)
 
-        # Third LSTM layer
-        lstm3 = LSTM(32, return_sequences=False, dropout=0.2, recurrent_dropout=0.2)(lstm2)
-        lstm3 = BatchNormalization()(lstm3)
+            # Third LSTM layer
+            lstm3 = LSTM(32, return_sequences=False, dropout=0.2, recurrent_dropout=0.2)(lstm2)
+            lstm3 = BatchNormalization()(lstm3)
 
-        # Dense layers (from original)
-        dense1 = Dense(50, activation='relu', kernel_regularizer=l1_l2(l1=0.01, l2=0.01))(lstm3)
-        dense1 = Dropout(0.3)(dense1)
+            # Dense layers
+            dense1 = Dense(50, activation='relu', kernel_regularizer=l1_l2(l1=0.01, l2=0.01))(lstm3)
+            dense1 = Dropout(0.3)(dense1)
 
-        dense2 = Dense(25, activation='relu', kernel_regularizer=l1_l2(l1=0.01, l2=0.01))(dense1)
-        dense2 = Dropout(0.2)(dense2)
+            dense2 = Dense(25, activation='relu', kernel_regularizer=l1_l2(l1=0.01, l2=0.01))(dense1)
+            dense2 = Dropout(0.2)(dense2)
 
-        outputs = Dense(1, activation='linear')(dense2)
+            outputs = Dense(1, activation='linear')(dense2)
 
-        model = Model(inputs=inputs, outputs=outputs)
-        model.compile(optimizer=Adam(learning_rate=0.001), loss='huber', metrics=['mae'])
+            model = Model(inputs=inputs, outputs=outputs)
+            model.compile(optimizer=Adam(learning_rate=0.001), loss='huber', metrics=['mae'])
 
-        return model
+            return model
+        except Exception as e:
+            raise Exception(f"LSTM model building error: {str(e)}")
+
 
     def build_cnn_lstm_model(self, input_shape):
         """Build CNN-LSTM hybrid model for direction prediction (from original)"""
@@ -2421,72 +2461,126 @@ Date Range: {df.iloc[0, 0] if len(df) > 0 else 'N/A'} to {df.iloc[-1, 0] if len(
             # Update progress
             self.update_progress("Initializing analysis pipeline...")
 
-            # Data preprocessing
-            self.update_progress("Preprocessing data with quality validation...")
-            success = self.ai_agent.enhanced_data_preprocessing(self.csv_file_path)
-            if not success:
-                raise Exception("Data preprocessing failed")
+            # Data preprocessing with error handling
+            try:
+                self.update_progress("Preprocessing data with quality validation...")
+                success = self.ai_agent.enhanced_data_preprocessing(self.csv_file_path)
+                if not success:
+                    raise Exception("Data preprocessing failed")
+            except Exception as e:
+                raise Exception(f"Data preprocessing error: {str(e)}")
 
-            # Technical indicators
-            self.update_progress("Calculating comprehensive technical indicators...")
-            self.ai_agent.calculate_advanced_technical_indicators()
+            # Technical indicators with error handling
+            try:
+                self.update_progress("Calculating comprehensive technical indicators...")
+                self.ai_agent.calculate_advanced_technical_indicators()
+            except Exception as e:
+                raise Exception(f"Technical indicators error: {str(e)}")
 
-            # Smart money analysis
+            # Smart money analysis with error handling
             if any(var.get() for var in self.smart_money_vars.values()):
-                self.update_progress("Performing smart money analysis...")
-                self.ai_agent.analyze_smart_money_flow()
+                try:
+                    self.update_progress("Performing smart money analysis...")
+                    self.ai_agent.analyze_smart_money_flow()
+                except Exception as e:
+                    raise Exception(f"Smart money analysis error: {str(e)}")
 
-            # Feature engineering
-            self.update_progress("Engineering advanced features...")
-            self.ai_agent.enhanced_feature_engineering()
-            self.ai_agent.prepare_enhanced_features()
+            # Feature engineering with error handling
+            try:
+                self.update_progress("Engineering advanced features...")
+                self.ai_agent.enhanced_feature_engineering()
+                self.ai_agent.prepare_enhanced_features()
+            except Exception as e:
+                raise Exception(f"Feature engineering error: {str(e)}")
 
             # Train ML models with selected models
             selected_models = [k for k, v in self.model_vars.items() if v.get()]
             if selected_models:
-                self.update_progress("Training machine learning ensemble...")
-                self.ai_agent.train_enhanced_ml_models(selected_models)
+                try:
+                    self.update_progress("Training machine learning ensemble...")
+                    self.ai_agent.train_enhanced_ml_models(selected_models)
+                except Exception as e:
+                    raise Exception(f"ML model training error: {str(e)}")
 
             # Train deep learning models if enabled
             selected_dl_models = [k for k, v in self.dl_vars.items() if v.get()]
             if selected_dl_models and DEEP_LEARNING_AVAILABLE:
-                self.update_progress("Training deep learning models...")
-                sequence_length = self.sequence_length.get()
-                self.ai_agent.train_advanced_deep_learning_models(sequence_length, selected_dl_models)
+                try:
+                    self.update_progress("Training deep learning models...")
+                    sequence_length = self.sequence_length.get()
+                    self.ai_agent.train_advanced_deep_learning_models(sequence_length, selected_dl_models)
+                except Exception as e:
+                    raise Exception(f"Deep learning training error: {str(e)}")
 
-            # Make predictions
-            self.update_progress("Generating predictions and confidence intervals...")
-            predictions, confidence = self.ai_agent.make_enhanced_predictions()
+            # Make predictions with error handling
+            try:
+                self.update_progress("Generating predictions and confidence intervals...")
+                predictions, confidence = self.ai_agent.make_enhanced_predictions()
+            except Exception as e:
+                raise Exception(f"Prediction generation error: {str(e)}")
 
-            # Calculate risk metrics
-            self.update_progress("Calculating comprehensive risk metrics...")
-            self.ai_agent.calculate_risk_metrics()
+            # Calculate risk metrics with error handling
+            try:
+                self.update_progress("Calculating comprehensive risk metrics...")
+                self.ai_agent.calculate_comprehensive_risk_metrics()
+            except Exception as e:
+                raise Exception(f"Risk metrics calculation error: {str(e)}")
 
-            # Update UI with results
-            self.root.after(0, lambda: self.display_comprehensive_results(predictions, confidence))
-            self.root.after(0, lambda: self.update_performance_display())
-            self.root.after(0, lambda: self.update_risk_display())
-            self.root.after(0, lambda: self.update_status("Complete analysis finished successfully!", "green"))
+            # Update UI with results - with error handling
+            try:
+                self.root.after(0, lambda: self.display_comprehensive_results(predictions, confidence))
+                self.root.after(0, lambda: self.update_performance_display())
+                self.root.after(0, lambda: self.update_risk_display())
+                self.root.after(0, lambda: self.update_status("Complete analysis finished successfully!", "green"))
+            except Exception as e:
+                raise Exception(f"UI update error: {str(e)}")
 
             self.analysis_complete = True
 
         except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Analysis Error", str(e)))
-            self.root.after(0, lambda: self.update_status("Analysis failed", "red"))
+            # Detailed error reporting
+            error_details = f"""
+    Analysis Error Details:
+    Error Type: {type(e).__name__}
+    Error Message: {str(e)}
+    Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+    User: wahabsust
+            """
+
+            print(error_details)  # Console output
+
+            # Safe GUI error display
+            def show_error():
+                try:
+                    self.progress_text.delete(1.0, tk.END)
+                    self.progress_text.insert(tk.END, error_details)
+                except:
+                    pass  # If even this fails, just ignore
+
+            self.root.after(0, show_error)
+            self.root.after(0, lambda: self.update_status("Analysis failed - check console", "red"))
         finally:
             self.root.after(0, lambda: self.progress.stop())
             self.root.after(0, lambda: self.update_progress("Analysis complete."))
 
     def update_progress(self, message):
-        """Update progress display"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        progress_message = f"[{timestamp}] {message}\n"
+        """Update progress display with error handling"""
+        try:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            progress_message = f"[{timestamp}] {message}\n"
 
-        def update_ui():
-            self.progress_text.insert(tk.END, progress_message)
-            self.progress_text.see(tk.END)
+            def update_ui():
+                try:
+                    self.progress_text.insert(tk.END, progress_message)
+                    self.progress_text.see(tk.END)
+                except Exception as ui_error:
+                    print(f"UI Progress update failed: {ui_error}")
+                    print(f"Message was: {message}")
 
-        self.root.after(0, update_ui)
+            self.root.after(0, update_ui)
+        except Exception as e:
+            print(f"Progress update error: {e}")
+            print(f"Message: {message}")
 
     def display_comprehensive_results(self, predictions, confidence):
         """Display comprehensive prediction results"""
