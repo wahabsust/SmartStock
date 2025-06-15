@@ -19,6 +19,7 @@ import json
 import sys
 import traceback
 
+
 def detailed_exception_handler(exc_type, exc_value, exc_traceback):
     """Custom exception handler to show detailed error information"""
     print("=" * 60)
@@ -29,6 +30,7 @@ def detailed_exception_handler(exc_type, exc_value, exc_traceback):
     print("\nFull Traceback:")
     traceback.print_exception(exc_type, exc_value, exc_traceback)
     print("=" * 60)
+
 
 # Set the custom exception handler
 sys.excepthook = detailed_exception_handler
@@ -45,6 +47,21 @@ import xgboost as xgb
 import lightgbm as lgb
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 import catboost as cb
+
+# SHAP for model explainability - NEW ADDITION
+try:
+    import shap
+    SHAP_AVAILABLE = True
+    print("✅ SHAP explainability library loaded successfully")
+except ImportError:
+    SHAP_AVAILABLE = False
+    print("⚠️ SHAP not available - install with: pip install shap")
+
+# Enhanced statistical libraries for Monte Carlo - NEW ADDITION
+from scipy import stats
+from scipy.optimize import minimize
+import warnings
+warnings.filterwarnings('ignore')
 
 # Advanced Deep Learning Libraries
 try:
@@ -212,6 +229,293 @@ class TechnicalIndicators:
 
         return fib_236, fib_382, fib_50, fib_618
 
+
+# NEW CLASS: Advanced Risk Management and Monte Carlo Simulations
+class AdvancedRiskManager:
+    """Advanced risk management with Monte Carlo simulations and SL/TP forecasting"""
+
+    def __init__(self):
+        self.monte_carlo_results = {}
+        self.sl_tp_recommendations = {}
+        self.risk_scenarios = {}
+
+    @staticmethod
+    def monte_carlo_price_simulation(current_price, volatility, drift, days, simulations=10000):
+        """Monte Carlo simulation for price forecasting"""
+
+        dt = 1 / 252  # Daily time step
+        prices = np.zeros((simulations, days + 1))
+        prices[:, 0] = current_price
+
+        for t in range(1, days + 1):
+            z = np.random.standard_normal(simulations)
+            prices[:, t] = prices[:, t - 1] * np.exp(
+                (drift - 0.5 * volatility ** 2) * dt + volatility * np.sqrt(dt) * z)
+
+        return prices
+
+    def calculate_optimal_sl_tp(self, entry_price, predictions, confidence_scores, risk_tolerance='moderate'):
+        """Calculate optimal Stop Loss and Take Profit levels using Monte Carlo"""
+        """Core SL/TP calculation logic with Monte Carlo simulation"""
+        try:
+            # Risk tolerance mapping
+            risk_params = {
+                'conservative': {'max_risk': 0.02, 'risk_reward_ratio': 1.5, 'confidence_threshold': 0.8},
+                'moderate': {'max_risk': 0.05, 'risk_reward_ratio': 2.0, 'confidence_threshold': 0.7},
+                'aggressive': {'max_risk': 0.10, 'risk_reward_ratio': 2.5, 'confidence_threshold': 0.6}
+            }
+
+            params = risk_params.get(risk_tolerance, risk_params['moderate'])
+
+            # Extract price prediction and confidence
+            price_pred = predictions.get('price', entry_price)
+            confidence = confidence_scores.get('price', 0.5)
+
+            # Calculate expected return and volatility
+            expected_return = (price_pred - entry_price) / entry_price
+
+            # Dynamic volatility estimation (simplified)
+            base_volatility = 0.02  # 2% daily volatility base
+            confidence_adjusted_vol = base_volatility / max(confidence, 0.1)
+
+            # Monte Carlo simulation for optimal levels
+            mc_prices = self.monte_carlo_price_simulation(
+                entry_price, confidence_adjusted_vol, expected_return / 30, 30, 5000
+            )
+
+            # Calculate percentiles for SL/TP
+            final_prices = mc_prices[:, -1]
+
+            # Stop Loss: Conservative percentile based on max risk
+            sl_percentile = params['max_risk'] * 100
+            stop_loss = np.percentile(final_prices, sl_percentile)
+
+            # Take Profit: Based on risk-reward ratio
+            if expected_return > 0:
+                risk_amount = entry_price - stop_loss
+                take_profit = entry_price + (risk_amount * params['risk_reward_ratio'])
+            else:
+                take_profit = entry_price * 1.05  # Conservative 5% target
+
+            # Ensure logical levels
+            stop_loss = min(stop_loss, entry_price * (1 - params['max_risk']))
+            take_profit = max(take_profit, entry_price * 1.02)  # Minimum 2% profit target
+
+            # Calculate probabilities
+            prob_hit_sl = np.mean(final_prices <= stop_loss)
+            prob_hit_tp = np.mean(final_prices >= take_profit)
+
+            sl_tp_result = {
+                'entry_price': entry_price,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'risk_amount': entry_price - stop_loss,
+                'reward_amount': take_profit - entry_price,
+                'risk_reward_ratio': (take_profit - entry_price) / (entry_price - stop_loss),
+                'probability_stop_loss': prob_hit_sl,
+                'probability_take_profit': prob_hit_tp,
+                'expected_value': (prob_hit_tp * (take_profit - entry_price)) - (
+                            prob_hit_sl * (entry_price - stop_loss)),
+                'confidence_level': confidence,
+                'risk_tolerance': risk_tolerance,
+                'monte_carlo_simulations': len(final_prices)
+            }
+
+            self.sl_tp_recommendations = sl_tp_result
+            return sl_tp_result
+
+        except Exception as e:
+            print(f"Error calculating SL/TP levels: {e}")
+            # Fallback to simple calculation
+            risk_pct = {'conservative': 0.03, 'moderate': 0.05, 'aggressive': 0.08}.get(risk_tolerance, 0.05)
+            return {
+                'entry_price': entry_price,
+                'stop_loss': entry_price * (1 - risk_pct),
+                'take_profit': entry_price * (1 + risk_pct * 2),
+                'risk_amount': entry_price * risk_pct,
+                'reward_amount': entry_price * risk_pct * 2,
+                'risk_reward_ratio': 2.0,
+                'confidence_level': confidence_scores.get('price', 0.5),
+                'error': str(e)
+            }
+
+    def run_comprehensive_monte_carlo(self, current_price, historical_returns, prediction_horizon=30):
+        """Run comprehensive Monte Carlo analysis"""
+        """Core Monte Carlo simulation logic"""
+        try:
+            # Calculate historical statistics
+            mean_return = historical_returns.mean()
+            volatility = historical_returns.std()
+
+            # Multiple scenarios
+            scenarios = {
+                'base_case': {'drift': mean_return, 'vol_multiplier': 1.0},
+                'bull_case': {'drift': mean_return * 1.5, 'vol_multiplier': 0.8},
+                'bear_case': {'drift': mean_return * 0.5, 'vol_multiplier': 1.3},
+                'stress_case': {'drift': mean_return * -0.5, 'vol_multiplier': 2.0}
+            }
+
+            monte_carlo_results = {}
+
+            for scenario_name, params in scenarios.items():
+                adjusted_vol = volatility * params['vol_multiplier']
+                drift = params['drift']
+
+                # Run simulation
+                prices = self.monte_carlo_price_simulation(
+                    current_price, adjusted_vol, drift, prediction_horizon, 10000
+                )
+
+                final_prices = prices[:, -1]
+
+                monte_carlo_results[scenario_name] = {
+                    'mean_final_price': np.mean(final_prices),
+                    'median_final_price': np.median(final_prices),
+                    'std_final_price': np.std(final_prices),
+                    'var_95': np.percentile(final_prices, 5),
+                    'var_99': np.percentile(final_prices, 1),
+                    'upside_95': np.percentile(final_prices, 95),
+                    'upside_99': np.percentile(final_prices, 99),
+                    'prob_profit': np.mean(final_prices > current_price),
+                    'prob_loss_5pct': np.mean(final_prices < current_price * 0.95),
+                    'prob_gain_10pct': np.mean(final_prices > current_price * 1.10),
+                    'expected_return': (np.mean(final_prices) - current_price) / current_price,
+                    'volatility_used': adjusted_vol,
+                    'drift_used': drift
+                }
+
+            self.monte_carlo_results = monte_carlo_results
+            return monte_carlo_results
+
+        except Exception as e:
+            print(f"Error in Monte Carlo simulation: {e}")
+            return {}
+
+
+# NEW CLASS: SHAP Explainability Manager
+class SHAPExplainabilityManager:
+    """Manage SHAP explainability for model interpretability"""
+
+    def __init__(self):
+        self.explainers = {}
+        self.shap_values = {}
+        self.feature_importance_shap = {}
+
+    def create_explainer(self, model, X_train, model_name):
+        """Create SHAP explainer for a model"""
+        if not SHAP_AVAILABLE:
+            print("SHAP not available - skipping explainability analysis")
+            return None
+
+        try:
+            # Choose appropriate explainer based on model type
+            if hasattr(model, 'predict_proba'):
+                # Tree-based models
+                if 'rf' in model_name.lower() or 'xgb' in model_name.lower() or 'lgb' in model_name.lower():
+                    explainer = shap.TreeExplainer(model)
+                else:
+                    # Use KernelExplainer for other models
+                    background = shap.kmeans(X_train, min(100, len(X_train)))
+                    explainer = shap.KernelExplainer(model.predict, background)
+            else:
+                # Regression models
+                if hasattr(model, 'feature_importances_'):
+                    explainer = shap.TreeExplainer(model)
+                else:
+                    background = shap.kmeans(X_train, min(100, len(X_train)))
+                    explainer = shap.KernelExplainer(model.predict, background)
+
+            self.explainers[model_name] = explainer
+            print(f"✅ SHAP explainer created for {model_name}")
+            return explainer
+
+        except Exception as e:
+            print(f"⚠️ Could not create SHAP explainer for {model_name}: {e}")
+            return None
+
+    def calculate_shap_values(self, model_name, X_sample):
+        """Calculate SHAP values for predictions"""
+        if not SHAP_AVAILABLE or model_name not in self.explainers:
+            return None
+
+        try:
+            explainer = self.explainers[model_name]
+
+            # Calculate SHAP values (limit sample size for performance)
+            sample_size = min(100, len(X_sample))
+            X_sample_limited = X_sample.iloc[:sample_size] if hasattr(X_sample, 'iloc') else X_sample[:sample_size]
+
+            shap_values = explainer.shap_values(X_sample_limited)
+
+            # Handle different output formats
+            if isinstance(shap_values, list):
+                shap_values = shap_values[0]  # Take first class for binary classification
+
+            self.shap_values[model_name] = shap_values
+
+            # Calculate feature importance from SHAP values
+            feature_importance = np.abs(shap_values).mean(0)
+            self.feature_importance_shap[model_name] = feature_importance
+
+            print(f"✅ SHAP values calculated for {model_name}")
+            return shap_values
+
+        except Exception as e:
+            print(f"⚠️ Error calculating SHAP values for {model_name}: {e}")
+            return None
+
+    def get_top_features(self, model_name, feature_names, top_n=10):
+        """Get top contributing features from SHAP analysis"""
+        if model_name not in self.feature_importance_shap:
+            return []
+
+        try:
+            importance = self.feature_importance_shap[model_name]
+
+            # Create feature importance pairs
+            feature_pairs = list(zip(feature_names, importance))
+
+            # Sort by importance
+            feature_pairs.sort(key=lambda x: x[1], reverse=True)
+
+            return feature_pairs[:top_n]
+
+        except Exception as e:
+            print(f"Error getting top features: {e}")
+            return []
+
+    def generate_explanation_summary(self, model_name, feature_names, prediction_value):
+        """Generate human-readable explanation summary"""
+        if model_name not in self.feature_importance_shap:
+            return "SHAP explanation not available for this model."
+
+        try:
+            top_features = self.get_top_features(model_name, feature_names, 5)
+
+            explanation = f"""🔍 SHAP Model Explanation for {model_name.upper()}
+
+📊 Prediction Value: {prediction_value:.4f}
+
+🎯 Top 5 Contributing Features:
+"""
+
+            for i, (feature, importance) in enumerate(top_features, 1):
+                impact = "Strong" if importance > 0.1 else "Moderate" if importance > 0.05 else "Weak"
+                explanation += f"{i}. {feature}: {importance:.4f} ({impact} impact)\n"
+
+            explanation += f"""
+📈 Model Interpretability:
+• Feature contributions are calculated using SHAP (SHapley Additive exPlanations)
+• Higher values indicate stronger influence on the prediction
+• SHAP values show both magnitude and direction of feature impact
+• This provides transparency into model decision-making process
+"""
+
+            return explanation
+
+        except Exception as e:
+            return f"Error generating explanation: {e}"
+
 # Enhanced AI Agent with ALL original functionality
 class EnhancedStockMarketAIAgent:
     """
@@ -239,6 +543,15 @@ class EnhancedStockMarketAIAgent:
         self.smart_money_analysis = {}
         self.market_trend = "Unknown"
         self.risk_metrics = {}
+
+        # NEW ADDITIONS for Phase 1
+        self.risk_manager = AdvancedRiskManager()
+        self.shap_manager = SHAPExplainabilityManager() if SHAP_AVAILABLE else None
+        self.sl_tp_analysis = {}
+        self.monte_carlo_analysis = {}
+        self.model_explanations = {}
+
+
 
     def create_enhanced_sample_data(self):
         """Create enhanced realistic sample data with all features"""
@@ -1260,7 +1573,6 @@ class EnhancedStockMarketAIAgent:
         except Exception as e:
             raise Exception(f"LSTM model building error: {str(e)}")
 
-
     def build_cnn_lstm_model(self, input_shape):
         """Build CNN-LSTM hybrid model for direction prediction (from original)"""
         inputs = Input(shape=(input_shape[1], input_shape[2]))
@@ -1327,12 +1639,95 @@ class EnhancedStockMarketAIAgent:
 
         return model
 
+    def calculate_advanced_sl_tp_levels(self, predictions, confidence_scores, current_price, risk_tolerance='moderate'):
+        """Calculate advanced Stop Loss and Take Profit levels"""
+        """Wrapper method that calls AdvancedRiskManager.calculate_optimal_sl_tp()"""
+        try:
+            print("📊 Calculating advanced SL/TP levels with Monte Carlo simulation...")
+
+            # Get historical returns for Monte Carlo
+            if hasattr(self, 'data') and self.data is not None:
+                historical_returns = self.data['Close'].pct_change().dropna()
+
+                # Run comprehensive Monte Carlo analysis
+                mc_results = self.risk_manager.run_comprehensive_monte_carlo(
+                    current_price, historical_returns, 30
+                )
+                self.monte_carlo_analysis = mc_results
+
+                # Calculate optimal SL/TP levels
+                sl_tp_result = self.risk_manager.calculate_optimal_sl_tp(
+                    current_price, predictions, confidence_scores, risk_tolerance
+                )
+                self.sl_tp_analysis = sl_tp_result
+
+                print("✅ Advanced SL/TP calculation completed")
+                return sl_tp_result
+            else:
+                print("⚠️ No data available for SL/TP calculation")
+                return {}
+
+        except Exception as e:
+            print(f"❌ Error calculating SL/TP levels: {e}")
+            return {}
+
+    def generate_shap_explanations(self):
+        """Generate SHAP explanations for all trained models"""
+        """Generate SHAP explanations for all trained models"""
+        if not SHAP_AVAILABLE or not self.shap_manager:
+            print("SHAP not available - skipping model explanations")
+            return
+
+        try:
+            print("🔍 Generating SHAP model explanations...")
+
+            # Prepare feature data
+            feature_cols = [col for col in self.features.columns
+                            if not col.startswith('Next_') and col != 'Price_Direction' and col != 'Price_Change_Pct']
+
+            X = self.features[feature_cols].fillna(0)
+
+            # Split data for training sample
+            split_idx = int(len(X) * 0.8)
+            X_train = X[:split_idx]
+
+            explanations = {}
+
+            # Generate explanations for each model
+            for model_name, model in self.models.items():
+                try:
+                    # Create SHAP explainer
+                    explainer = self.shap_manager.create_explainer(model, X_train, model_name)
+
+                    if explainer:
+                        # Calculate SHAP values for recent data
+                        recent_data = X.tail(50)  # Last 50 data points
+                        shap_values = self.shap_manager.calculate_shap_values(model_name, recent_data)
+
+                        if shap_values is not None:
+                            # Generate explanation summary
+                            latest_prediction = self.predictions.get(model_name, 0)
+                            explanation = self.shap_manager.generate_explanation_summary(
+                                model_name, feature_cols, latest_prediction
+                            )
+                            explanations[model_name] = explanation
+
+                except Exception as e:
+                    print(f"⚠️ Could not generate SHAP explanation for {model_name}: {e}")
+                    continue
+
+            self.model_explanations = explanations
+            print(f"✅ SHAP explanations generated for {len(explanations)} models")
+
+        except Exception as e:
+            print(f"❌ Error generating SHAP explanations: {e}")
+
     def make_enhanced_predictions(self):
-        """Make enhanced predictions with confidence intervals (ALL from original)"""
+        """Make enhanced predictions with confidence intervals, SHAP explanations, and SL/TP analysis"""
         if not self.models:
             raise ValueError("Models not trained")
 
-        print("Making enhanced predictions...")
+        print("Making enhanced predictions with advanced risk analysis...")
 
         # Prepare latest data
         feature_cols = [col for col in self.features.columns
@@ -1419,10 +1814,19 @@ class EnhancedStockMarketAIAgent:
             except Exception as e:
                 print(f"Error making deep learning prediction: {str(e)}")
 
+        # NEW: Generate SHAP explanations
+        self.generate_shap_explanations()
+
+        # NEW: Calculate advanced SL/TP levels
+        current_price = self.data['Close'].iloc[-1] if hasattr(self, 'data') and self.data is not None else 100
+        risk_tolerance = getattr(self, 'risk_tolerance', 'moderate')
+
+        self.calculate_advanced_sl_tp_levels(predictions, confidence_scores, current_price, risk_tolerance)
+
         self.predictions = predictions
         self.prediction_confidence = confidence_scores
 
-        print(f"Predictions completed: {len(predictions)} predictions generated")
+        print(f"Enhanced predictions completed: {len(predictions)} predictions with advanced risk analysis")
         return predictions, confidence_scores
 
     def calculate_comprehensive_risk_metrics(self):
@@ -1454,659 +1858,662 @@ class EnhancedStockMarketAIAgent:
 
         print("Comprehensive risk metrics calculated")
 
+
 class ProfessionalSmartStockAIApp:
-        """Professional Desktop Application with Light Blue Theme and Enhanced UX"""
+    """Professional Desktop Application with Light Blue Theme and Enhanced UX"""
 
-        def __init__(self):
-            self.root = tk.Tk()
-            self.root.title("SmartStock AI - Professional Trading Analysis")
-            self.root.geometry("1800x1200")
-            self.root.minsize(1400, 900)
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("SmartStock AI - Professional Trading Analysis")
+        self.root.geometry("1800x1200")
+        self.root.minsize(1400, 900)
 
-            # Professional color scheme - Light Blue & White
-            self.colors = {
-                'primary_blue': '#1E90FF',  # Dodger Blue
-                'light_blue': '#87CEEB',  # Sky Blue
-                'steel_blue': '#4682B4',  # Steel Blue
-                'white': '#FFFFFF',  # Pure White
-                'light_gray': '#F5F5F5',  # Very Light Gray
-                'medium_gray': '#E0E0E0',  # Light Gray
-                'dark_blue': '#003366',  # Dark Blue for text
-                'accent_blue': '#0078D4',  # Microsoft Blue
-                'success_green': '#28A745',  # Success Green
-                'warning_orange': '#FD7E14',  # Warning Orange
-                'error_red': '#DC3545',  # Error Red
-                'gradient_start': '#87CEEB',  # Light gradient start
-                'gradient_end': '#1E90FF'  # Dark gradient end
-            }
+        # Professional color scheme - Light Blue & White
+        self.colors = {
+            'primary_blue': '#1E90FF',  # Dodger Blue
+            'light_blue': '#87CEEB',  # Sky Blue
+            'steel_blue': '#4682B4',  # Steel Blue
+            'white': '#FFFFFF',  # Pure White
+            'light_gray': '#F5F5F5',  # Very Light Gray
+            'medium_gray': '#E0E0E0',  # Light Gray
+            'dark_blue': '#003366',  # Dark Blue for text
+            'accent_blue': '#0078D4',  # Microsoft Blue
+            'success_green': '#28A745',  # Success Green
+            'warning_orange': '#FD7E14',  # Warning Orange
+            'error_red': '#DC3545',  # Error Red
+            'gradient_start': '#87CEEB',  # Light gradient start
+            'gradient_end': '#1E90FF'  # Dark gradient end
+        }
 
-            # Configure main window
-            self.root.configure(bg=self.colors['white'])
+        # Configure main window
+        self.root.configure(bg=self.colors['white'])
 
-            # Zoom factor for scalability
-            self.zoom_factor = 1.0
+        # Zoom factor for scalability
+        self.zoom_factor = 1.0
 
-            # Variables
-            self.csv_file_path = None
-            self.analysis_complete = False
-            self.real_time_enabled = tk.BooleanVar()
-            self.auto_update_predictions = tk.BooleanVar()
+        # Variables
+        self.csv_file_path = None
+        self.analysis_complete = False
+        self.real_time_enabled = tk.BooleanVar()
+        self.auto_update_predictions = tk.BooleanVar()
 
-            # Initialize components
-            self.ai_agent = EnhancedStockMarketAIAgent()
-            self.setup_professional_styles()
-            self.setup_keyboard_bindings()
-            #self.create_professional_gui()
-            self.apply_professional_theme()
+        # Initialize components
+        self.ai_agent = EnhancedStockMarketAIAgent()
+        self.setup_professional_styles()
+        self.setup_keyboard_bindings()
+        # self.create_professional_gui()
+        self.apply_professional_theme()
 
-            self.setup_professional_styles()  # Add this line
-            self.create_professional_gui()
+        self.setup_professional_styles()  # Add this line
+        self.create_professional_gui()
 
-        def setup_professional_styles(self):
-            """Setup professional light blue and white theme styles"""
-            self.style = ttk.Style()
-            self.style.theme_use('clam')
+    def setup_professional_styles(self):
+        """Setup professional light blue and white theme styles"""
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
 
-            # Configure professional styles
+        # Configure professional styles
 
-            # Main frame styles
-            self.style.configure('Professional.TFrame',
-                                 background=self.colors['white'],
-                                 relief='flat',
-                                 borderwidth=0)
+        # Main frame styles
+        self.style.configure('Professional.TFrame',
+                             background=self.colors['white'],
+                             relief='flat',
+                             borderwidth=0)
 
-            self.style.configure('Card.TFrame',
-                                 background=self.colors['white'],
-                                 relief='solid',
+        self.style.configure('Card.TFrame',
+                             background=self.colors['white'],
+                             relief='solid',
+                             borderwidth=1,
+                             bordercolor=self.colors['medium_gray'])
+
+        # Professional labels
+        self.style.configure('Title.TLabel',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 24, 'bold'))
+
+        self.style.configure('Heading.TLabel',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 16, 'bold'))
+
+        self.style.configure('Subheading.TLabel',
+                             background=self.colors['white'],
+                             foreground=self.colors['steel_blue'],
+                             font=('Segoe UI', 12, 'bold'))
+
+        self.style.configure('Body.TLabel',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 10))
+
+        # Professional buttons
+        self.style.configure('Primary.TButton',
+                             background=self.colors['primary_blue'],
+                             foreground='white',
+                             font=('Segoe UI', 11, 'bold'),
+                             padding=(20, 12),
+                             relief='flat',
+                             borderwidth=0)
+
+        self.style.map('Primary.TButton',
+                       background=[('active', self.colors['steel_blue']),
+                                   ('pressed', self.colors['dark_blue'])])
+
+        self.style.configure('Secondary.TButton',
+                             background=self.colors['light_blue'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 10),
+                             padding=(15, 8),
+                             relief='flat',
+                             borderwidth=1)
+
+        self.style.map('Secondary.TButton',
+                       background=[('active', self.colors['medium_gray']),
+                                   ('pressed', self.colors['light_gray'])])
+
+        self.style.configure('Success.TButton',
+                             background=self.colors['success_green'],
+                             foreground='white',
+                             font=('Segoe UI', 10, 'bold'),
+                             padding=(15, 8))
+
+        # Professional notebook (tabs)
+        self.style.configure('Professional.TNotebook',
+                             background=self.colors['white'],
+                             tabmargins=[0, 0, 0, 0])
+
+        self.style.configure('Professional.TNotebook.Tab',
+                             background=self.colors['light_gray'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 11, 'bold'),
+                             padding=[20, 12],
+                             borderwidth=0)
+
+        self.style.map('Professional.TNotebook.Tab',
+                       background=[('selected', self.colors['primary_blue']),
+                                   ('active', self.colors['light_blue'])],
+                       foreground=[('selected', 'white'),
+                                   ('active', self.colors['dark_blue'])])
+
+        # Professional treeview
+        self.style.configure('Professional.Treeview',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             fieldbackground=self.colors['white'],
+                             font=('Segoe UI', 10),
+                             rowheight=25)
+
+        self.style.configure('Professional.Treeview.Heading',
+                             background=self.colors['primary_blue'],
+                             foreground='white',
+                             font=('Segoe UI', 11, 'bold'),
+                             relief='flat')
+
+        # Professional entry and text widgets
+        self.style.configure('Professional.TEntry',
+                             fieldbackground=self.colors['white'],
+                             bordercolor=self.colors['primary_blue'],
+                             lightcolor=self.colors['light_blue'],
+                             darkcolor=self.colors['steel_blue'],
+                             borderwidth=2,
+                             insertcolor=self.colors['dark_blue'])
+
+        # Professional progressbar - ENHANCED VERSION
+        try:
+            # Create custom layout for horizontal progressbar
+            self.style.layout('Professional.TProgressbar',
+                              [('Horizontal.Progressbar.trough',
+                                {'children': [('Horizontal.Progressbar.pbar',
+                                               {'side': 'left', 'sticky': 'ns'})],
+                                 'sticky': 'nswe'})])
+
+            # Configure the progressbar style
+            self.style.configure('Professional.TProgressbar',
+                                 background=self.colors['primary_blue'],
+                                 troughcolor=self.colors['light_gray'],
                                  borderwidth=1,
-                                 bordercolor=self.colors['medium_gray'])
-
-            # Professional labels
-            self.style.configure('Title.TLabel',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 24, 'bold'))
-
-            self.style.configure('Heading.TLabel',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 16, 'bold'))
-
-            self.style.configure('Subheading.TLabel',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['steel_blue'],
-                                 font=('Segoe UI', 12, 'bold'))
-
-            self.style.configure('Body.TLabel',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 10))
-
-            # Professional buttons
-            self.style.configure('Primary.TButton',
-                                 background=self.colors['primary_blue'],
-                                 foreground='white',
-                                 font=('Segoe UI', 11, 'bold'),
-                                 padding=(20, 12),
-                                 relief='flat',
-                                 borderwidth=0)
-
-            self.style.map('Primary.TButton',
-                           background=[('active', self.colors['steel_blue']),
-                                       ('pressed', self.colors['dark_blue'])])
-
-            self.style.configure('Secondary.TButton',
-                                 background=self.colors['light_blue'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 10),
-                                 padding=(15, 8),
-                                 relief='flat',
-                                 borderwidth=1)
-
-            self.style.map('Secondary.TButton',
-                           background=[('active', self.colors['medium_gray']),
-                                       ('pressed', self.colors['light_gray'])])
-
-            self.style.configure('Success.TButton',
-                                 background=self.colors['success_green'],
-                                 foreground='white',
-                                 font=('Segoe UI', 10, 'bold'),
-                                 padding=(15, 8))
-
-            # Professional notebook (tabs)
-            self.style.configure('Professional.TNotebook',
-                                 background=self.colors['white'],
-                                 tabmargins=[0, 0, 0, 0])
-
-            self.style.configure('Professional.TNotebook.Tab',
-                                 background=self.colors['light_gray'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 11, 'bold'),
-                                 padding=[20, 12],
-                                 borderwidth=0)
-
-            self.style.map('Professional.TNotebook.Tab',
-                           background=[('selected', self.colors['primary_blue']),
-                                       ('active', self.colors['light_blue'])],
-                           foreground=[('selected', 'white'),
-                                       ('active', self.colors['dark_blue'])])
-
-            # Professional treeview
-            self.style.configure('Professional.Treeview',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 fieldbackground=self.colors['white'],
-                                 font=('Segoe UI', 10),
-                                 rowheight=25)
-
-            self.style.configure('Professional.Treeview.Heading',
-                                 background=self.colors['primary_blue'],
-                                 foreground='white',
-                                 font=('Segoe UI', 11, 'bold'),
-                                 relief='flat')
-
-            # Professional entry and text widgets
-            self.style.configure('Professional.TEntry',
-                                 fieldbackground=self.colors['white'],
-                                 bordercolor=self.colors['primary_blue'],
-                                 lightcolor=self.colors['light_blue'],
+                                 lightcolor=self.colors['primary_blue'],
                                  darkcolor=self.colors['steel_blue'],
-                                 borderwidth=2,
-                                 insertcolor=self.colors['dark_blue'])
+                                 relief='flat',
+                                 thickness=20)
 
-            # Professional progressbar - ENHANCED VERSION
-            try:
-                # Create custom layout for horizontal progressbar
-                self.style.layout('Professional.TProgressbar',
-                                  [('Horizontal.Progressbar.trough',
-                                    {'children': [('Horizontal.Progressbar.pbar',
-                                                   {'side': 'left', 'sticky': 'ns'})],
-                                     'sticky': 'nswe'})])
+            # Map different states
+            self.style.map('Professional.TProgressbar',
+                           background=[('active', self.colors['steel_blue'])])
 
-                # Configure the progressbar style
-                self.style.configure('Professional.TProgressbar',
-                                     background=self.colors['primary_blue'],
-                                     troughcolor=self.colors['light_gray'],
-                                     borderwidth=1,
-                                     lightcolor=self.colors['primary_blue'],
-                                     darkcolor=self.colors['steel_blue'],
-                                     relief='flat',
-                                     thickness=20)
+            print("✅ Professional progressbar style created successfully")
 
-                # Map different states
-                self.style.map('Professional.TProgressbar',
-                               background=[('active', self.colors['steel_blue'])])
-
-                print("✅ Professional progressbar style created successfully")
-
-            except Exception as e:
-                print(f"⚠️ Warning: Could not create custom progressbar layout: {e}")
-                # Fallback to basic style configuration
-                self.style.configure('Professional.TProgressbar',
-                                     background=self.colors['primary_blue'],
-                                     troughcolor=self.colors['light_gray'],
-                                     borderwidth=0,
-                                     lightcolor=self.colors['primary_blue'],
-                                     darkcolor=self.colors['primary_blue'])
-
-            # Professional checkbuttons and radiobuttons
-            self.style.configure('Professional.TCheckbutton',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 10),
-                                 focuscolor='none')
-
-            self.style.configure('Professional.TRadiobutton',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 10),
-                                 focuscolor='none')
-
-            # Professional scale
-            self.style.configure('Professional.TScale',
-                                 background=self.colors['white'],
+        except Exception as e:
+            print(f"⚠️ Warning: Could not create custom progressbar layout: {e}")
+            # Fallback to basic style configuration
+            self.style.configure('Professional.TProgressbar',
+                                 background=self.colors['primary_blue'],
                                  troughcolor=self.colors['light_gray'],
                                  borderwidth=0,
-                                 sliderthickness=15,
-                                 gripcount=0)
+                                 lightcolor=self.colors['primary_blue'],
+                                 darkcolor=self.colors['primary_blue'])
 
-            # Professional labelframe
-            self.style.configure('Professional.TLabelframe',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 borderwidth=2,
-                                 relief='solid',
-                                 bordercolor=self.colors['medium_gray'])
+        # Professional checkbuttons and radiobuttons
+        self.style.configure('Professional.TCheckbutton',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 10),
+                             focuscolor='none')
 
-            self.style.configure('Professional.TLabelframe.Label',
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 font=('Segoe UI', 12, 'bold'))
+        self.style.configure('Professional.TRadiobutton',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 10),
+                             focuscolor='none')
 
-            # Additional professional styles for completeness
+        # Professional scale
+        self.style.configure('Professional.TScale',
+                             background=self.colors['white'],
+                             troughcolor=self.colors['light_gray'],
+                             borderwidth=0,
+                             sliderthickness=15,
+                             gripcount=0)
 
-            # Professional combobox
-            self.style.configure('Professional.TCombobox',
-                                 fieldbackground=self.colors['white'],
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 bordercolor=self.colors['primary_blue'],
-                                 lightcolor=self.colors['light_blue'],
-                                 darkcolor=self.colors['steel_blue'],
-                                 borderwidth=2,
-                                 arrowcolor=self.colors['primary_blue'])
+        # Professional labelframe
+        self.style.configure('Professional.TLabelframe',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             borderwidth=2,
+                             relief='solid',
+                             bordercolor=self.colors['medium_gray'])
 
-            # Professional spinbox
-            self.style.configure('Professional.TSpinbox',
-                                 fieldbackground=self.colors['white'],
-                                 background=self.colors['white'],
-                                 foreground=self.colors['dark_blue'],
-                                 bordercolor=self.colors['primary_blue'],
-                                 lightcolor=self.colors['light_blue'],
-                                 darkcolor=self.colors['steel_blue'],
-                                 borderwidth=2,
-                                 arrowcolor=self.colors['primary_blue'])
+        self.style.configure('Professional.TLabelframe.Label',
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             font=('Segoe UI', 12, 'bold'))
 
-            # Professional scrollbar
-            self.style.configure('Professional.Vertical.TScrollbar',
-                                 background=self.colors['light_gray'],
-                                 troughcolor=self.colors['white'],
-                                 bordercolor=self.colors['medium_gray'],
-                                 arrowcolor=self.colors['steel_blue'],
-                                 darkcolor=self.colors['primary_blue'],
-                                 lightcolor=self.colors['light_blue'])
+        # Additional professional styles for completeness
 
-            self.style.configure('Professional.Horizontal.TScrollbar',
-                                 background=self.colors['light_gray'],
-                                 troughcolor=self.colors['white'],
-                                 bordercolor=self.colors['medium_gray'],
-                                 arrowcolor=self.colors['steel_blue'],
-                                 darkcolor=self.colors['primary_blue'],
-                                 lightcolor=self.colors['light_blue'])
+        # Professional combobox
+        self.style.configure('Professional.TCombobox',
+                             fieldbackground=self.colors['white'],
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             bordercolor=self.colors['primary_blue'],
+                             lightcolor=self.colors['light_blue'],
+                             darkcolor=self.colors['steel_blue'],
+                             borderwidth=2,
+                             arrowcolor=self.colors['primary_blue'])
 
-            print("🎨 Professional theme styles configured successfully!")
+        # Professional spinbox
+        self.style.configure('Professional.TSpinbox',
+                             fieldbackground=self.colors['white'],
+                             background=self.colors['white'],
+                             foreground=self.colors['dark_blue'],
+                             bordercolor=self.colors['primary_blue'],
+                             lightcolor=self.colors['light_blue'],
+                             darkcolor=self.colors['steel_blue'],
+                             borderwidth=2,
+                             arrowcolor=self.colors['primary_blue'])
 
-        def setup_keyboard_bindings(self):
-            """Setup keyboard shortcuts for enhanced UX"""
-            self.root.bind('<Control-plus>', self.zoom_in)
-            self.root.bind('<Control-minus>', self.zoom_out)
-            self.root.bind('<Control-0>', self.reset_zoom)
-            self.root.bind('<F11>', self.toggle_fullscreen)
-            self.root.bind('<Control-o>', self.upload_csv_file)
-            self.root.bind('<Control-s>', self.save_configuration)
-            self.root.bind('<Control-r>', self.refresh_predictions)
-            self.root.bind('<F5>', self.refresh_predictions)
+        # Professional scrollbar
+        self.style.configure('Professional.Vertical.TScrollbar',
+                             background=self.colors['light_gray'],
+                             troughcolor=self.colors['white'],
+                             bordercolor=self.colors['medium_gray'],
+                             arrowcolor=self.colors['steel_blue'],
+                             darkcolor=self.colors['primary_blue'],
+                             lightcolor=self.colors['light_blue'])
 
-        def zoom_in(self, event=None):
-            """Increase zoom factor"""
-            self.zoom_factor = min(2.0, self.zoom_factor + 0.1)
-            self.apply_zoom()
+        self.style.configure('Professional.Horizontal.TScrollbar',
+                             background=self.colors['light_gray'],
+                             troughcolor=self.colors['white'],
+                             bordercolor=self.colors['medium_gray'],
+                             arrowcolor=self.colors['steel_blue'],
+                             darkcolor=self.colors['primary_blue'],
+                             lightcolor=self.colors['light_blue'])
 
-        def zoom_out(self, event=None):
-            """Decrease zoom factor"""
-            self.zoom_factor = max(0.5, self.zoom_factor - 0.1)
-            self.apply_zoom()
+        print("🎨 Professional theme styles configured successfully!")
 
-        def reset_zoom(self, event=None):
-            """Reset zoom to 100%"""
-            self.zoom_factor = 1.0
-            self.apply_zoom()
+    def setup_keyboard_bindings(self):
+        """Setup keyboard shortcuts for enhanced UX"""
+        self.root.bind('<Control-plus>', self.zoom_in)
+        self.root.bind('<Control-minus>', self.zoom_out)
+        self.root.bind('<Control-0>', self.reset_zoom)
+        self.root.bind('<F11>', self.toggle_fullscreen)
+        self.root.bind('<Control-o>', self.upload_csv_file)
+        self.root.bind('<Control-s>', self.save_configuration)
+        self.root.bind('<Control-r>', self.refresh_predictions)
+        self.root.bind('<F5>', self.refresh_predictions)
 
-        def apply_zoom(self):
-            """Apply current zoom factor to fonts"""
-            base_size = 10
-            new_size = int(base_size * self.zoom_factor)
+    def zoom_in(self, event=None):
+        """Increase zoom factor"""
+        self.zoom_factor = min(2.0, self.zoom_factor + 0.1)
+        self.apply_zoom()
 
-            # Update font sizes
-            font_configs = [
-                ('Segoe UI', int(24 * self.zoom_factor), 'bold'),  # Title
-                ('Segoe UI', int(16 * self.zoom_factor), 'bold'),  # Heading
-                ('Segoe UI', int(12 * self.zoom_factor), 'bold'),  # Subheading
-                ('Segoe UI', int(10 * self.zoom_factor)),  # Body
-            ]
+    def zoom_out(self, event=None):
+        """Decrease zoom factor"""
+        self.zoom_factor = max(0.5, self.zoom_factor - 0.1)
+        self.apply_zoom()
 
-            self.update_status(f"Zoom: {int(self.zoom_factor * 100)}%", "info")
+    def reset_zoom(self, event=None):
+        """Reset zoom to 100%"""
+        self.zoom_factor = 1.0
+        self.apply_zoom()
 
-        def toggle_fullscreen(self, event=None):
-            """Toggle fullscreen mode"""
-            current_state = self.root.attributes('-fullscreen')
-            self.root.attributes('-fullscreen', not current_state)
+    def apply_zoom(self):
+        """Apply current zoom factor to fonts"""
+        base_size = 10
+        new_size = int(base_size * self.zoom_factor)
 
-        def create_professional_gui(self):
-            """Create the professional GUI interface"""
-            # Main container with gradient-like effect
-            self.main_container = tk.Frame(self.root, bg=self.colors['white'])
-            self.main_container.pack(fill=tk.BOTH, expand=True)
+        # Update font sizes
+        font_configs = [
+            ('Segoe UI', int(24 * self.zoom_factor), 'bold'),  # Title
+            ('Segoe UI', int(16 * self.zoom_factor), 'bold'),  # Heading
+            ('Segoe UI', int(12 * self.zoom_factor), 'bold'),  # Subheading
+            ('Segoe UI', int(10 * self.zoom_factor)),  # Body
+        ]
 
-            # Header section
-            self.create_professional_header()
+        self.update_status(f"Zoom: {int(self.zoom_factor * 100)}%", "info")
 
-            # Content area with sidebar
-            self.create_content_area()
+    def toggle_fullscreen(self, event=None):
+        """Toggle fullscreen mode"""
+        current_state = self.root.attributes('-fullscreen')
+        self.root.attributes('-fullscreen', not current_state)
 
-            # Status bar
-            self.create_status_bar()
+    def create_professional_gui(self):
+        """Create the professional GUI interface"""
+        # Main container with gradient-like effect
+        self.main_container = tk.Frame(self.root, bg=self.colors['white'])
+        self.main_container.pack(fill=tk.BOTH, expand=True)
 
-        def create_professional_header(self):
-            """Create professional header with gradient effect"""
-            # Header frame with gradient-like background
-            header_frame = tk.Frame(self.main_container,
-                                    bg=self.colors['primary_blue'],
-                                    height=80)
-            header_frame.pack(fill=tk.X, padx=0, pady=0)
-            header_frame.pack_propagate(False)
+        # Header section
+        self.create_professional_header()
 
-            # Header content
-            header_content = tk.Frame(header_frame, bg=self.colors['primary_blue'])
-            header_content.pack(fill=tk.BOTH, expand=True, padx=30, pady=15)
+        # Content area with sidebar
+        self.create_content_area()
 
-            # Left side - Title and logo
-            left_header = tk.Frame(header_content, bg=self.colors['primary_blue'])
-            left_header.pack(side=tk.LEFT, fill=tk.Y)
+        # Status bar
+        self.create_status_bar()
 
-            # App title with icon
-            title_frame = tk.Frame(left_header, bg=self.colors['primary_blue'])
-            title_frame.pack(side=tk.LEFT, fill=tk.Y)
+    def create_professional_header(self):
+        """Create professional header with gradient effect"""
+        # Header frame with gradient-like background
+        header_frame = tk.Frame(self.main_container,
+                                bg=self.colors['primary_blue'],
+                                height=80)
+        header_frame.pack(fill=tk.X, padx=0, pady=0)
+        header_frame.pack_propagate(False)
 
-            icon_label = tk.Label(title_frame,
-                                  text="📈",
-                                  font=('Segoe UI', 28),
+        # Header content
+        header_content = tk.Frame(header_frame, bg=self.colors['primary_blue'])
+        header_content.pack(fill=tk.BOTH, expand=True, padx=30, pady=15)
+
+        # Left side - Title and logo
+        left_header = tk.Frame(header_content, bg=self.colors['primary_blue'])
+        left_header.pack(side=tk.LEFT, fill=tk.Y)
+
+        # App title with icon
+        title_frame = tk.Frame(left_header, bg=self.colors['primary_blue'])
+        title_frame.pack(side=tk.LEFT, fill=tk.Y)
+
+        icon_label = tk.Label(title_frame,
+                              text="📈",
+                              font=('Segoe UI', 28),
+                              bg=self.colors['primary_blue'],
+                              fg='white')
+        icon_label.pack(side=tk.LEFT, padx=(0, 15))
+
+        title_label = tk.Label(title_frame,
+                               text="SmartStock AI",
+                               font=('Segoe UI', 24, 'bold'),
+                               bg=self.colors['primary_blue'],
+                               fg='white')
+        title_label.pack(side=tk.LEFT, anchor=tk.W)
+
+        subtitle_label = tk.Label(left_header,
+                                  text="Professional Trading Analysis Platform",
+                                  font=('Segoe UI', 12),
                                   bg=self.colors['primary_blue'],
-                                  fg='white')
-            icon_label.pack(side=tk.LEFT, padx=(0, 15))
+                                  fg=self.colors['light_blue'])
+        subtitle_label.pack(side=tk.LEFT, anchor=tk.SW, padx=(10, 0))
 
-            title_label = tk.Label(title_frame,
-                                   text="SmartStock AI",
-                                   font=('Segoe UI', 24, 'bold'),
-                                   bg=self.colors['primary_blue'],
-                                   fg='white')
-            title_label.pack(side=tk.LEFT, anchor=tk.W)
+        # Right side - Controls and status
+        right_header = tk.Frame(header_content, bg=self.colors['primary_blue'])
+        right_header.pack(side=tk.RIGHT, fill=tk.Y)
 
-            subtitle_label = tk.Label(left_header,
-                                      text="Professional Trading Analysis Platform",
-                                      font=('Segoe UI', 12),
-                                      bg=self.colors['primary_blue'],
-                                      fg=self.colors['light_blue'])
-            subtitle_label.pack(side=tk.LEFT, anchor=tk.SW, padx=(10, 0))
+        # Status and controls
+        controls_frame = tk.Frame(right_header, bg=self.colors['primary_blue'])
+        controls_frame.pack(side=tk.RIGHT, fill=tk.Y)
 
-            # Right side - Controls and status
-            right_header = tk.Frame(header_content, bg=self.colors['primary_blue'])
-            right_header.pack(side=tk.RIGHT, fill=tk.Y)
+        # Real-time toggle
+        self.realtime_frame = tk.Frame(controls_frame, bg=self.colors['primary_blue'])
+        self.realtime_frame.pack(side=tk.RIGHT, padx=(0, 20))
 
-            # Status and controls
-            controls_frame = tk.Frame(right_header, bg=self.colors['primary_blue'])
-            controls_frame.pack(side=tk.RIGHT, fill=tk.Y)
-
-            # Real-time toggle
-            self.realtime_frame = tk.Frame(controls_frame, bg=self.colors['primary_blue'])
-            self.realtime_frame.pack(side=tk.RIGHT, padx=(0, 20))
-
-            realtime_cb = tk.Checkbutton(self.realtime_frame,
-                                         text="Real-time Updates",
-                                         variable=self.real_time_enabled,
-                                         command=self.toggle_realtime,
-                                         bg=self.colors['primary_blue'],
-                                         fg='white',
-                                         font=('Segoe UI', 10),
-                                         selectcolor=self.colors['steel_blue'],
-                                         activebackground=self.colors['primary_blue'],
-                                         activeforeground='white')
-            realtime_cb.pack(anchor=tk.E)
-
-            # Status indicator
-            self.status_indicator = tk.Label(controls_frame,
-                                             text="● Ready",
-                                             font=('Segoe UI', 12, 'bold'),
-                                             bg=self.colors['primary_blue'],
-                                             fg=self.colors['success_green'])
-            self.status_indicator.pack(side=tk.RIGHT, anchor=tk.E)
-
-            # User info
-            user_label = tk.Label(controls_frame,
-                                  text=f"👤 {self.get_current_user()}",
-                                  font=('Segoe UI', 10),
-                                  bg=self.colors['primary_blue'],
-                                  fg='white')
-            user_label.pack(side=tk.RIGHT, anchor=tk.NE, padx=(0, 15))
-
-            # Date/time
-            datetime_label = tk.Label(controls_frame,
-                                      text=f"🕒 {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
-                                      font=('Segoe UI', 9),
-                                      bg=self.colors['primary_blue'],
-                                      fg=self.colors['light_blue'])
-            datetime_label.pack(side=tk.RIGHT, anchor=tk.NE)
-
-        def create_content_area(self):
-            """Create main content area with sidebar navigation"""
-            # Content container
-            content_frame = tk.Frame(self.main_container, bg=self.colors['light_gray'])
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
-
-            # Sidebar navigation
-            self.sidebar = tk.Frame(content_frame,
-                                    bg=self.colors['white'],
-                                    width=250,
-                                    relief='solid',
-                                    borderwidth=1,
-                                    bd=1)
-            self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 1))
-            self.sidebar.pack_propagate(False)
-
-            self.create_sidebar_navigation()
-
-            # Main content area
-            self.main_content = tk.Frame(content_frame, bg=self.colors['light_gray'])
-            self.main_content.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-
-            # Create professional notebook for tabs
-            self.create_professional_notebook()
-
-        def create_sidebar_navigation(self):
-            """Create sidebar navigation menu"""
-            # Sidebar header
-            sidebar_header = tk.Frame(self.sidebar, bg=self.colors['white'], height=60)
-            sidebar_header.pack(fill=tk.X, padx=0, pady=0)
-            sidebar_header.pack_propagate(False)
-
-            nav_title = tk.Label(sidebar_header,
-                                 text="Navigation",
-                                 font=('Segoe UI', 14, 'bold'),
-                                 bg=self.colors['white'],
-                                 fg=self.colors['dark_blue'])
-            nav_title.pack(pady=20)
-
-            # Navigation buttons
-            nav_buttons = [
-                ("📁 Data Upload", "upload", self.show_upload_tab),
-                ("⚙️ Analysis Setup", "analysis", self.show_analysis_tab),
-                ("📈 Predictions", "predictions", self.show_predictions_tab),
-                ("📊 Charts", "charts", self.show_charts_tab),
-                ("🏆 Performance", "performance", self.show_performance_tab),
-                ("⚠️ Risk Management", "risk", self.show_risk_tab),
-                ("⚙️ Settings", "settings", self.show_settings_tab)
-            ]
-
-            self.nav_buttons = {}
-            for text, key, command in nav_buttons:
-                btn_frame = tk.Frame(self.sidebar, bg=self.colors['white'])
-                btn_frame.pack(fill=tk.X, padx=10, pady=2)
-
-                btn = tk.Button(btn_frame,
-                                text=text,
-                                command=command,
-                                bg=self.colors['light_gray'],
-                                fg=self.colors['dark_blue'],
-                                font=('Segoe UI', 11),
-                                relief='flat',
-                                bd=0,
-                                pady=12,
-                                anchor='w',
-                                activebackground=self.colors['primary_blue'],
-                                activeforeground='white')
-                btn.pack(fill=tk.X)
-
-                self.nav_buttons[key] = btn
-
-                # Hover effects
-                def on_enter(e, button=btn):
-                    if button['bg'] != self.colors['primary_blue']:
-                        button.config(bg=self.colors['light_blue'])
-
-                def on_leave(e, button=btn):
-                    if button['bg'] != self.colors['primary_blue']:
-                        button.config(bg=self.colors['light_gray'])
-
-                btn.bind("<Enter>", on_enter)
-                btn.bind("<Leave>", on_leave)
-
-            # Quick actions section
-            quick_frame = tk.Frame(self.sidebar, bg=self.colors['white'])
-            quick_frame.pack(fill=tk.X, padx=10, pady=20)
-
-            quick_title = tk.Label(quick_frame,
-                                   text="Quick Actions",
-                                   font=('Segoe UI', 12, 'bold'),
-                                   bg=self.colors['white'],
-                                   fg=self.colors['dark_blue'])
-            quick_title.pack(anchor=tk.W, pady=(0, 10))
-
-            # Quick action buttons
-            quick_upload = tk.Button(quick_frame,
-                                     text="📁 Upload Data",
-                                     command=self.upload_csv_file,
+        realtime_cb = tk.Checkbutton(self.realtime_frame,
+                                     text="Real-time Updates",
+                                     variable=self.real_time_enabled,
+                                     command=self.toggle_realtime,
                                      bg=self.colors['primary_blue'],
                                      fg='white',
-                                     font=('Segoe UI', 9, 'bold'),
-                                     relief='flat',
-                                     pady=8)
-            quick_upload.pack(fill=tk.X, pady=2)
+                                     font=('Segoe UI', 10),
+                                     selectcolor=self.colors['steel_blue'],
+                                     activebackground=self.colors['primary_blue'],
+                                     activeforeground='white')
+        realtime_cb.pack(anchor=tk.E)
 
-            quick_analyze = tk.Button(quick_frame,
-                                      text="🚀 Start Analysis",
-                                      command=self.start_analysis,
-                                      bg=self.colors['success_green'],
-                                      fg='white',
-                                      font=('Segoe UI', 9, 'bold'),
-                                      relief='flat',
-                                      pady=8)
-            quick_analyze.pack(fill=tk.X, pady=2)
+        # Status indicator
+        self.status_indicator = tk.Label(controls_frame,
+                                         text="● Ready",
+                                         font=('Segoe UI', 12, 'bold'),
+                                         bg=self.colors['primary_blue'],
+                                         fg=self.colors['success_green'])
+        self.status_indicator.pack(side=tk.RIGHT, anchor=tk.E)
 
-            quick_sample = tk.Button(quick_frame,
-                                     text="🧪 Sample Data",
-                                     command=self.use_sample_data,
-                                     bg=self.colors['light_blue'],
-                                     fg=self.colors['dark_blue'],
-                                     font=('Segoe UI', 9),
-                                     relief='flat',
-                                     pady=8)
-            quick_sample.pack(fill=tk.X, pady=2)
+        # User info
+        user_label = tk.Label(controls_frame,
+                              text=f"👤 {self.get_current_user()}",
+                              font=('Segoe UI', 10),
+                              bg=self.colors['primary_blue'],
+                              fg='white')
+        user_label.pack(side=tk.RIGHT, anchor=tk.NE, padx=(0, 15))
 
-        def create_professional_notebook(self):
-            """Create professional notebook with enhanced styling"""
-            # Notebook container
-            notebook_frame = tk.Frame(self.main_content, bg=self.colors['light_gray'])
-            notebook_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        # Date/time
+        datetime_label = tk.Label(controls_frame,
+                                  text=f"🕒 {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
+                                  font=('Segoe UI', 9),
+                                  bg=self.colors['primary_blue'],
+                                  fg=self.colors['light_blue'])
+        datetime_label.pack(side=tk.RIGHT, anchor=tk.NE)
 
-            # Create notebook
-            self.notebook = ttk.Notebook(notebook_frame, style='Professional.TNotebook')
-            self.notebook.pack(fill=tk.BOTH, expand=True)
+    def create_content_area(self):
+        """Create main content area with sidebar navigation"""
+        # Content container
+        content_frame = tk.Frame(self.main_container, bg=self.colors['light_gray'])
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
-            # Create all tabs
-            self.create_upload_tab()
-            self.create_analysis_tab()
-            self.create_predictions_tab()
-            self.create_charts_tab()
-            self.create_performance_tab()
-            self.create_risk_tab()
-            self.create_settings_tab()
+        # Sidebar navigation
+        self.sidebar = tk.Frame(content_frame,
+                                bg=self.colors['white'],
+                                width=250,
+                                relief='solid',
+                                borderwidth=1,
+                                bd=1)
+        self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 1))
+        self.sidebar.pack_propagate(False)
 
-            # Bind tab change event
-            self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        self.create_sidebar_navigation()
 
-        def create_status_bar(self):
-            """Create professional status bar"""
-            status_frame = tk.Frame(self.main_container,
-                                    bg=self.colors['medium_gray'],
-                                    height=30,
-                                    relief='solid',
-                                    bd=1)
-            status_frame.pack(fill=tk.X, side=tk.BOTTOM)
-            status_frame.pack_propagate(False)
+        # Main content area
+        self.main_content = tk.Frame(content_frame, bg=self.colors['light_gray'])
+        self.main_content.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-            # Left status
-            left_status = tk.Frame(status_frame, bg=self.colors['medium_gray'])
-            left_status.pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        # Create professional notebook for tabs
+        self.create_professional_notebook()
 
-            self.status_label = tk.Label(left_status,
-                                         text="Ready",
-                                         bg=self.colors['medium_gray'],
-                                         fg=self.colors['dark_blue'],
-                                         font=('Segoe UI', 9))
-            self.status_label.pack(side=tk.LEFT, anchor=tk.W, pady=6)
+    def create_sidebar_navigation(self):
+        """Create sidebar navigation menu"""
+        # Sidebar header
+        sidebar_header = tk.Frame(self.sidebar, bg=self.colors['white'], height=60)
+        sidebar_header.pack(fill=tk.X, padx=0, pady=0)
+        sidebar_header.pack_propagate(False)
 
-            # Right status - zoom and version info
-            right_status = tk.Frame(status_frame, bg=self.colors['medium_gray'])
-            right_status.pack(side=tk.RIGHT, fill=tk.Y, padx=10)
+        nav_title = tk.Label(sidebar_header,
+                             text="Navigation",
+                             font=('Segoe UI', 14, 'bold'),
+                             bg=self.colors['white'],
+                             fg=self.colors['dark_blue'])
+        nav_title.pack(pady=20)
 
-            version_label = tk.Label(right_status,
-                                     text="v2.0 Professional",
+        # Navigation buttons
+        nav_buttons = [
+            ("📁 Data Upload", "upload", self.show_upload_tab),
+            ("⚙️ Analysis Setup", "analysis", self.show_analysis_tab),
+            ("📈 Predictions", "predictions", self.show_predictions_tab),
+            ("📊 Charts", "charts", self.show_charts_tab),
+            ("🏆 Performance", "performance", self.show_performance_tab),
+            ("⚠️ Risk Management", "risk", self.show_risk_tab),
+            ("⚙️ Settings", "settings", self.show_settings_tab)
+        ]
+
+        self.nav_buttons = {}
+        for text, key, command in nav_buttons:
+            btn_frame = tk.Frame(self.sidebar, bg=self.colors['white'])
+            btn_frame.pack(fill=tk.X, padx=10, pady=2)
+
+            btn = tk.Button(btn_frame,
+                            text=text,
+                            command=command,
+                            bg=self.colors['light_gray'],
+                            fg=self.colors['dark_blue'],
+                            font=('Segoe UI', 11),
+                            relief='flat',
+                            bd=0,
+                            pady=12,
+                            anchor='w',
+                            activebackground=self.colors['primary_blue'],
+                            activeforeground='white')
+            btn.pack(fill=tk.X)
+
+            self.nav_buttons[key] = btn
+
+            # Hover effects
+            def on_enter(e, button=btn):
+                if button['bg'] != self.colors['primary_blue']:
+                    button.config(bg=self.colors['light_blue'])
+
+            def on_leave(e, button=btn):
+                if button['bg'] != self.colors['primary_blue']:
+                    button.config(bg=self.colors['light_gray'])
+
+            btn.bind("<Enter>", on_enter)
+            btn.bind("<Leave>", on_leave)
+
+        # Quick actions section
+        quick_frame = tk.Frame(self.sidebar, bg=self.colors['white'])
+        quick_frame.pack(fill=tk.X, padx=10, pady=20)
+
+        quick_title = tk.Label(quick_frame,
+                               text="Quick Actions",
+                               font=('Segoe UI', 12, 'bold'),
+                               bg=self.colors['white'],
+                               fg=self.colors['dark_blue'])
+        quick_title.pack(anchor=tk.W, pady=(0, 10))
+
+        # Quick action buttons
+        quick_upload = tk.Button(quick_frame,
+                                 text="📁 Upload Data",
+                                 command=self.upload_csv_file,
+                                 bg=self.colors['primary_blue'],
+                                 fg='white',
+                                 font=('Segoe UI', 9, 'bold'),
+                                 relief='flat',
+                                 pady=8)
+        quick_upload.pack(fill=tk.X, pady=2)
+
+        quick_analyze = tk.Button(quick_frame,
+                                  text="🚀 Start Analysis",
+                                  command=self.start_analysis,
+                                  bg=self.colors['success_green'],
+                                  fg='white',
+                                  font=('Segoe UI', 9, 'bold'),
+                                  relief='flat',
+                                  pady=8)
+        quick_analyze.pack(fill=tk.X, pady=2)
+
+        quick_sample = tk.Button(quick_frame,
+                                 text="🧪 Sample Data",
+                                 command=self.use_sample_data,
+                                 bg=self.colors['light_blue'],
+                                 fg=self.colors['dark_blue'],
+                                 font=('Segoe UI', 9),
+                                 relief='flat',
+                                 pady=8)
+        quick_sample.pack(fill=tk.X, pady=2)
+
+    def create_professional_notebook(self):
+        """Create professional notebook with enhanced styling"""
+        # Notebook container
+        notebook_frame = tk.Frame(self.main_content, bg=self.colors['light_gray'])
+        notebook_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # Create notebook
+        self.notebook = ttk.Notebook(notebook_frame, style='Professional.TNotebook')
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Create all tabs in CORRECT ORDER (using add() instead of insert())
+        self.create_upload_tab()
+        self.create_analysis_tab()
+        self.create_predictions_tab()
+        self.create_shap_explainability_tab()  # Will be added as position 3
+        self.create_charts_tab()
+        self.create_performance_tab()
+        self.create_risk_tab()
+        self.create_advanced_risk_tab()  # Will be added as position 7
+        self.create_settings_tab()
+
+        # Bind tab change event
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+
+    def create_status_bar(self):
+        """Create professional status bar"""
+        status_frame = tk.Frame(self.main_container,
+                                bg=self.colors['medium_gray'],
+                                height=30,
+                                relief='solid',
+                                bd=1)
+        status_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        status_frame.pack_propagate(False)
+
+        # Left status
+        left_status = tk.Frame(status_frame, bg=self.colors['medium_gray'])
+        left_status.pack(side=tk.LEFT, fill=tk.Y, padx=10)
+
+        self.status_label = tk.Label(left_status,
+                                     text="Ready",
                                      bg=self.colors['medium_gray'],
-                                     fg=self.colors['steel_blue'],
-                                     font=('Segoe UI', 8))
-            version_label.pack(side=tk.RIGHT, anchor=tk.E, pady=6)
+                                     fg=self.colors['dark_blue'],
+                                     font=('Segoe UI', 9))
+        self.status_label.pack(side=tk.LEFT, anchor=tk.W, pady=6)
 
-            zoom_label = tk.Label(right_status,
-                                  text="100%",
-                                  bg=self.colors['medium_gray'],
-                                  fg=self.colors['dark_blue'],
-                                  font=('Segoe UI', 9))
-            zoom_label.pack(side=tk.RIGHT, anchor=tk.E, pady=6, padx=(0, 10))
+        # Right status - zoom and version info
+        right_status = tk.Frame(status_frame, bg=self.colors['medium_gray'])
+        right_status.pack(side=tk.RIGHT, fill=tk.Y, padx=10)
 
-        def create_upload_tab(self):
-            """Create professional data upload tab"""
-            upload_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
-            self.notebook.add(upload_frame, text="📁 Data Upload")
+        version_label = tk.Label(right_status,
+                                 text="v2.0 Professional",
+                                 bg=self.colors['medium_gray'],
+                                 fg=self.colors['steel_blue'],
+                                 font=('Segoe UI', 8))
+        version_label.pack(side=tk.RIGHT, anchor=tk.E, pady=6)
 
-            # Scrollable frame
-            canvas = tk.Canvas(upload_frame, bg=self.colors['white'])
-            scrollbar = ttk.Scrollbar(upload_frame, orient="vertical", command=canvas.yview)
-            scrollable_frame = ttk.Frame(canvas, style='Professional.TFrame')
+        zoom_label = tk.Label(right_status,
+                              text="100%",
+                              bg=self.colors['medium_gray'],
+                              fg=self.colors['dark_blue'],
+                              font=('Segoe UI', 9))
+        zoom_label.pack(side=tk.RIGHT, anchor=tk.E, pady=6, padx=(0, 10))
 
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-            )
+    def create_upload_tab(self):
+        """Create professional data upload tab"""
+        upload_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        self.notebook.add(upload_frame, text="📁 Data Upload")
 
-            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-            canvas.configure(yscrollcommand=scrollbar.set)
+        # Scrollable frame
+        canvas = tk.Canvas(upload_frame, bg=self.colors['white'])
+        scrollbar = ttk.Scrollbar(upload_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style='Professional.TFrame')
 
-            # Main content
-            content_frame = ttk.Frame(scrollable_frame, style='Professional.TFrame')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
 
-            # Header
-            header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            header_frame.pack(fill=tk.X, pady=(0, 30))
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-            title_label = ttk.Label(header_frame,
-                                    text="Data Upload & Validation",
-                                    style='Title.TLabel')
-            title_label.pack(anchor=tk.W)
+        # Main content
+        content_frame = ttk.Frame(scrollable_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
 
-            subtitle_label = ttk.Label(header_frame,
-                                       text="Upload your stock data CSV file or generate sample data for analysis",
-                                       style='Body.TLabel')
-            subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 30))
 
-            # Upload card
-            upload_card = self.create_card(content_frame, "Upload Options")
+        title_label = ttk.Label(header_frame,
+                                text="Data Upload & Validation",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
 
-            # Instructions
-            instructions_frame = ttk.Frame(upload_card, style='Professional.TFrame')
-            instructions_frame.pack(fill=tk.X, pady=(0, 20))
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Upload your stock data CSV file or generate sample data for analysis",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
 
-            instructions_text = """📋 Required CSV Format:
+        # Upload card
+        upload_card = self.create_card(content_frame, "Upload Options")
+
+        # Instructions
+        instructions_frame = ttk.Frame(upload_card, style='Professional.TFrame')
+        instructions_frame.pack(fill=tk.X, pady=(0, 20))
+
+        instructions_text = """📋 Required CSV Format:
 
         • Date column (supports multiple formats: YYYY-MM-DD, DD/MM/YYYY, etc.)
         • Open, High, Low, Close prices (numeric values)
@@ -2119,129 +2526,101 @@ class ProfessionalSmartStockAIApp:
         • Outlier detection and handling
         • Missing data identification"""
 
-            instructions_label = tk.Label(instructions_frame,
-                                          text=instructions_text,
-                                          bg=self.colors['white'],
-                                          fg=self.colors['dark_blue'],
-                                          font=('Segoe UI', 10),
-                                          justify=tk.LEFT,
-                                          anchor=tk.W)
-            instructions_label.pack(anchor=tk.W)
+        instructions_label = tk.Label(instructions_frame,
+                                      text=instructions_text,
+                                      bg=self.colors['white'],
+                                      fg=self.colors['dark_blue'],
+                                      font=('Segoe UI', 10),
+                                      justify=tk.LEFT,
+                                      anchor=tk.W)
+        instructions_label.pack(anchor=tk.W)
 
-            # Upload buttons
-            buttons_frame = ttk.Frame(upload_card, style='Professional.TFrame')
-            buttons_frame.pack(fill=tk.X, pady=20)
+        # Upload buttons
+        buttons_frame = ttk.Frame(upload_card, style='Professional.TFrame')
+        buttons_frame.pack(fill=tk.X, pady=20)
 
-            # Primary upload button
-            upload_btn = tk.Button(buttons_frame,
-                                   text="📁 Select CSV File",
-                                   command=self.upload_csv_file,
-                                   bg=self.colors['primary_blue'],
-                                   fg='white',
-                                   font=('Segoe UI', 12, 'bold'),
-                                   relief='flat',
-                                   pady=15,
-                                   padx=30,
-                                   cursor='hand2')
-            upload_btn.pack(side=tk.LEFT, padx=(0, 15))
+        # Primary upload button
+        upload_btn = tk.Button(buttons_frame,
+                               text="📁 Select CSV File",
+                               command=self.upload_csv_file,
+                               bg=self.colors['primary_blue'],
+                               fg='white',
+                               font=('Segoe UI', 12, 'bold'),
+                               relief='flat',
+                               pady=15,
+                               padx=30,
+                               cursor='hand2')
+        upload_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            # Secondary buttons
-            sample_btn = tk.Button(buttons_frame,
-                                   text="🧪 Generate Sample Data",
-                                   command=self.use_sample_data,
-                                   bg=self.colors['light_blue'],
-                                   fg=self.colors['dark_blue'],
-                                   font=('Segoe UI', 11),
-                                   relief='flat',
-                                   pady=12,
-                                   padx=25,
-                                   cursor='hand2')
-            sample_btn.pack(side=tk.LEFT, padx=(0, 15))
+        # Secondary buttons
+        sample_btn = tk.Button(buttons_frame,
+                               text="🧪 Generate Sample Data",
+                               command=self.use_sample_data,
+                               bg=self.colors['light_blue'],
+                               fg=self.colors['dark_blue'],
+                               font=('Segoe UI', 11),
+                               relief='flat',
+                               pady=12,
+                               padx=25,
+                               cursor='hand2')
+        sample_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            url_btn = tk.Button(buttons_frame,
-                                text="🌐 Import from URL",
-                                command=self.import_from_url,
-                                bg=self.colors['medium_gray'],
+        url_btn = tk.Button(buttons_frame,
+                            text="🌐 Import from URL",
+                            command=self.import_from_url,
+                            bg=self.colors['medium_gray'],
+                            fg=self.colors['dark_blue'],
+                            font=('Segoe UI', 11),
+                            relief='flat',
+                            pady=12,
+                            padx=25,
+                            cursor='hand2')
+        url_btn.pack(side=tk.LEFT)
+
+        # Validation options card
+        validation_card = self.create_card(content_frame, "Data Validation Options")
+
+        self.validation_vars = {
+            'outlier_detection': tk.BooleanVar(value=True),
+            'missing_data_fill': tk.BooleanVar(value=True),
+            'date_validation': tk.BooleanVar(value=True),
+            'price_validation': tk.BooleanVar(value=True)
+        }
+
+        validation_options = [
+            ('🔍 Outlier Detection & Removal', 'outlier_detection'),
+            ('🔧 Fill Missing Data Points', 'missing_data_fill'),
+            ('📅 Validate Date Formats', 'date_validation'),
+            ('💰 Price Consistency Check', 'price_validation')
+        ]
+
+        for i, (text, key) in enumerate(validation_options):
+            cb_frame = ttk.Frame(validation_card, style='Professional.TFrame')
+            cb_frame.pack(fill=tk.X, pady=5)
+
+            cb = tk.Checkbutton(cb_frame,
+                                text=text,
+                                variable=self.validation_vars[key],
+                                bg=self.colors['white'],
                                 fg=self.colors['dark_blue'],
-                                font=('Segoe UI', 11),
-                                relief='flat',
-                                pady=12,
-                                padx=25,
-                                cursor='hand2')
-            url_btn.pack(side=tk.LEFT)
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'],
+                                activeforeground=self.colors['dark_blue'])
+            cb.pack(anchor=tk.W)
 
-            # Validation options card
-            validation_card = self.create_card(content_frame, "Data Validation Options")
+        # File information card
+        info_card = self.create_card(content_frame, "File Information & Preview")
 
-            self.validation_vars = {
-                'outlier_detection': tk.BooleanVar(value=True),
-                'missing_data_fill': tk.BooleanVar(value=True),
-                'date_validation': tk.BooleanVar(value=True),
-                'price_validation': tk.BooleanVar(value=True)
-            }
+        # Create tabbed info display
+        info_notebook = ttk.Notebook(info_card, style='Professional.TNotebook')
+        info_notebook.pack(fill=tk.BOTH, expand=True, pady=10)
 
-            validation_options = [
-                ('🔍 Outlier Detection & Removal', 'outlier_detection'),
-                ('🔧 Fill Missing Data Points', 'missing_data_fill'),
-                ('📅 Validate Date Formats', 'date_validation'),
-                ('💰 Price Consistency Check', 'price_validation')
-            ]
+        # File info tab
+        info_tab = ttk.Frame(info_notebook, style='Professional.TFrame')
+        info_notebook.add(info_tab, text="📄 File Info")
 
-            for i, (text, key) in enumerate(validation_options):
-                cb_frame = ttk.Frame(validation_card, style='Professional.TFrame')
-                cb_frame.pack(fill=tk.X, pady=5)
-
-                cb = tk.Checkbutton(cb_frame,
-                                    text=text,
-                                    variable=self.validation_vars[key],
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'],
-                                    activeforeground=self.colors['dark_blue'])
-                cb.pack(anchor=tk.W)
-
-            # File information card
-            info_card = self.create_card(content_frame, "File Information & Preview")
-
-            # Create tabbed info display
-            info_notebook = ttk.Notebook(info_card, style='Professional.TNotebook')
-            info_notebook.pack(fill=tk.BOTH, expand=True, pady=10)
-
-            # File info tab
-            info_tab = ttk.Frame(info_notebook, style='Professional.TFrame')
-            info_notebook.add(info_tab, text="📄 File Info")
-
-            self.file_info_text = tk.Text(info_tab,
-                                          height=10,
-                                          bg=self.colors['white'],
-                                          fg=self.colors['dark_blue'],
-                                          font=('Consolas', 10),
-                                          relief='solid',
-                                          bd=1,
-                                          wrap=tk.WORD)
-            self.file_info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-            # Data preview tab
-            preview_tab = ttk.Frame(info_notebook, style='Professional.TFrame')
-            info_notebook.add(preview_tab, text="👁️ Data Preview")
-
-            preview_frame = ttk.Frame(preview_tab, style='Professional.TFrame')
-            preview_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-            self.data_preview = ttk.Treeview(preview_frame, style='Professional.Treeview')
-            preview_scroll = ttk.Scrollbar(preview_frame, orient="vertical", command=self.data_preview.yview)
-            self.data_preview.configure(yscrollcommand=preview_scroll.set)
-
-            self.data_preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            preview_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-            # Statistics tab
-            stats_tab = ttk.Frame(info_notebook, style='Professional.TFrame')
-            info_notebook.add(stats_tab, text="📊 Statistics")
-
-            self.stats_text = tk.Text(stats_tab,
+        self.file_info_text = tk.Text(info_tab,
                                       height=10,
                                       bg=self.colors['white'],
                                       fg=self.colors['dark_blue'],
@@ -2249,47 +2628,75 @@ class ProfessionalSmartStockAIApp:
                                       relief='solid',
                                       bd=1,
                                       wrap=tk.WORD)
-            self.stats_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.file_info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-            # Pack scrollable components
-            canvas.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
+        # Data preview tab
+        preview_tab = ttk.Frame(info_notebook, style='Professional.TFrame')
+        info_notebook.add(preview_tab, text="👁️ Data Preview")
 
-        def create_card(self, parent, title):
-            """Create a professional card widget"""
-            card_frame = ttk.Frame(parent, style='Professional.TFrame')
-            card_frame.pack(fill=tk.X, pady=(0, 20))
+        preview_frame = ttk.Frame(preview_tab, style='Professional.TFrame')
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-            # Card container with shadow effect
-            card_container = tk.Frame(card_frame,
-                                      bg=self.colors['white'],
-                                      relief='solid',
-                                      bd=1,
-                                      highlightbackground=self.colors['medium_gray'],
-                                      highlightthickness=1)
-            card_container.pack(fill=tk.X, padx=2, pady=2)
+        self.data_preview = ttk.Treeview(preview_frame, style='Professional.Treeview')
+        preview_scroll = ttk.Scrollbar(preview_frame, orient="vertical", command=self.data_preview.yview)
+        self.data_preview.configure(yscrollcommand=preview_scroll.set)
 
-            # Card header
-            header_frame = tk.Frame(card_container,
-                                    bg=self.colors['light_gray'],
-                                    height=40)
-            header_frame.pack(fill=tk.X)
-            header_frame.pack_propagate(False)
+        self.data_preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        preview_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-            title_label = tk.Label(header_frame,
-                                   text=title,
-                                   bg=self.colors['light_gray'],
-                                   fg=self.colors['dark_blue'],
-                                   font=('Segoe UI', 12, 'bold'))
-            title_label.pack(side=tk.LEFT, padx=20, pady=10)
+        # Statistics tab
+        stats_tab = ttk.Frame(info_notebook, style='Professional.TFrame')
+        info_notebook.add(stats_tab, text="📊 Statistics")
 
-            # Card content
-            content_frame = tk.Frame(card_container, bg=self.colors['white'])
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        self.stats_text = tk.Text(stats_tab,
+                                  height=10,
+                                  bg=self.colors['white'],
+                                  fg=self.colors['dark_blue'],
+                                  font=('Consolas', 10),
+                                  relief='solid',
+                                  bd=1,
+                                  wrap=tk.WORD)
+        self.stats_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-            return content_frame
+        # Pack scrollable components
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        """"
+    def create_card(self, parent, title):
+        """Create a professional card widget"""
+        card_frame = ttk.Frame(parent, style='Professional.TFrame')
+        card_frame.pack(fill=tk.X, pady=(0, 20))
+
+        # Card container with shadow effect
+        card_container = tk.Frame(card_frame,
+                                  bg=self.colors['white'],
+                                  relief='solid',
+                                  bd=1,
+                                  highlightbackground=self.colors['medium_gray'],
+                                  highlightthickness=1)
+        card_container.pack(fill=tk.X, padx=2, pady=2)
+
+        # Card header
+        header_frame = tk.Frame(card_container,
+                                bg=self.colors['light_gray'],
+                                height=40)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        title_label = tk.Label(header_frame,
+                               text=title,
+                               bg=self.colors['light_gray'],
+                               fg=self.colors['dark_blue'],
+                               font=('Segoe UI', 12, 'bold'))
+        title_label.pack(side=tk.LEFT, padx=20, pady=10)
+
+        # Card content
+        content_frame = tk.Frame(card_container, bg=self.colors['white'])
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        return content_frame
+
+    """"
         def create_analysis_tab(self):
             ""Create professional analysis configuration tab""
             analysis_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
@@ -2684,966 +3091,1113 @@ class ProfessionalSmartStockAIApp:
             scrollbar.pack(side="right", fill="y")
         """""
 
-        def create_analysis_tab(self):
-            """Create professional analysis configuration tab"""
-            analysis_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
-            self.notebook.add(analysis_frame, text="⚙️ Analysis Setup")
+    def create_analysis_tab(self):
+        """Create professional analysis configuration tab"""
+        analysis_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        self.notebook.add(analysis_frame, text="⚙️ Analysis Setup")
 
-            # Scrollable frame setup
-            canvas = tk.Canvas(analysis_frame, bg=self.colors['white'])
-            scrollbar = ttk.Scrollbar(analysis_frame, orient="vertical", command=canvas.yview)
-            scrollable_frame = ttk.Frame(canvas, style='Professional.TFrame')
+        # Scrollable frame setup
+        canvas = tk.Canvas(analysis_frame, bg=self.colors['white'])
+        scrollbar = ttk.Scrollbar(analysis_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style='Professional.TFrame')
 
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-            )
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
 
-            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-            canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-            # Main content
-            content_frame = ttk.Frame(scrollable_frame, style='Professional.TFrame')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+        # Main content
+        content_frame = ttk.Frame(scrollable_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
 
-            # Header
-            header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            header_frame.pack(fill=tk.X, pady=(0, 30))
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 30))
 
-            title_label = ttk.Label(header_frame,
-                                    text="Advanced Analysis Configuration",
-                                    style='Title.TLabel')
-            title_label.pack(anchor=tk.W)
+        title_label = ttk.Label(header_frame,
+                                text="Advanced Analysis Configuration",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
 
-            subtitle_label = ttk.Label(header_frame,
-                                       text="Configure machine learning models, technical indicators, and analysis parameters",
-                                       style='Body.TLabel')
-            subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Configure machine learning models, technical indicators, and analysis parameters",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
 
-            # Create three-column layout
-            columns_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            columns_frame.pack(fill=tk.BOTH, expand=True)
+        # Create three-column layout
+        columns_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        columns_frame.pack(fill=tk.BOTH, expand=True)
 
-            # Left column - ML Models
-            left_column = ttk.Frame(columns_frame, style='Professional.TFrame')
-            left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        # Left column - ML Models
+        left_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-            ml_card = self.create_card(left_column, "🤖 Machine Learning Models")
+        ml_card = self.create_card(left_column, "🤖 Machine Learning Models")
 
-            # Ensemble models section
-            ensemble_label = ttk.Label(ml_card,
-                                       text="Ensemble Models:",
-                                       style='Subheading.TLabel')
-            ensemble_label.pack(anchor=tk.W, pady=(0, 10))
-
-            self.model_vars = {}
-            models = [
-                ('🌳 Random Forest (Tree-based ensemble)', 'rf', True),
-                ('🚀 XGBoost (Gradient boosting)', 'xgb', True),
-                ('⚡ LightGBM (Fast gradient boosting)', 'lgb', True),
-                ('🐱 CatBoost (Categorical features)', 'cb', True),
-                ('🎲 Extra Trees (Randomized trees)', 'et', True),
-                ('🗳️ Voting Regressor (Meta-ensemble)', 'voting', True),
-                ('📚 Stacking Regressor (Layered ensemble)', 'stacking', True)
-            ]
-
-            for name, key, default in models:
-                var = tk.BooleanVar(value=default)
-                self.model_vars[key] = var
-
-                cb_frame = ttk.Frame(ml_card, style='Professional.TFrame')
-                cb_frame.pack(fill=tk.X, pady=3)
-
-                cb = tk.Checkbutton(cb_frame,
-                                    text=name,
-                                    variable=var,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                cb.pack(anchor=tk.W)
-
-            # Deep Learning section
-            dl_label = ttk.Label(ml_card,
-                                 text="Deep Learning Models:",
-                                 style='Subheading.TLabel')
-            dl_label.pack(anchor=tk.W, pady=(20, 10))
-
-            self.dl_vars = {}
-            dl_models = [
-                ('🧠 LSTM (Long Short-Term Memory)', 'lstm', DEEP_LEARNING_AVAILABLE),
-                ('🔄 GRU (Gated Recurrent Unit)', 'gru', DEEP_LEARNING_AVAILABLE),
-                ('🌊 CNN-LSTM Hybrid', 'cnn_lstm', DEEP_LEARNING_AVAILABLE),
-                ('🎯 Attention-based LSTM', 'attention_lstm', DEEP_LEARNING_AVAILABLE)
-            ]
-
-            for name, key, available in dl_models:
-                var = tk.BooleanVar(value=available)
-                self.dl_vars[key] = var
-
-                cb_frame = ttk.Frame(ml_card, style='Professional.TFrame')
-                cb_frame.pack(fill=tk.X, pady=3)
-
-                cb = tk.Checkbutton(cb_frame,
-                                    text=name,
-                                    variable=var,
-                                    state='normal' if available else 'disabled',
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'] if available else self.colors['medium_gray'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                cb.pack(anchor=tk.W)
-
-            if not DEEP_LEARNING_AVAILABLE:
-                warning_label = tk.Label(ml_card,
-                                         text="⚠️ TensorFlow not available - Deep Learning disabled",
-                                         bg=self.colors['white'],
-                                         fg=self.colors['warning_orange'],
-                                         font=('Segoe UI', 9))
-                warning_label.pack(anchor=tk.W, pady=(5, 0))
-
-            # Center column - Technical Analysis
-            center_column = ttk.Frame(columns_frame, style='Professional.TFrame')
-            center_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-
-            tech_card = self.create_card(center_column, "📈 Technical Analysis")
-
-            # Technical indicators
-            indicators_label = ttk.Label(tech_card,
-                                         text="Technical Indicators:",
-                                         style='Subheading.TLabel')
-            indicators_label.pack(anchor=tk.W, pady=(0, 10))
-
-            self.indicator_vars = {}
-            indicators = [
-                ('📊 Moving Averages (SMA, EMA, WMA)', 'ma', True),
-                ('⚡ RSI & Stochastic Oscillators', 'momentum', True),
-                ('📈 MACD (Multiple timeframes)', 'macd', True),
-                ('🔵 Bollinger Bands (Multiple periods)', 'bb', True),
-                ('📉 Williams %R', 'williams', True),
-                ('📊 Volume Indicators (OBV, VPT)', 'volume', True),
-                ('💨 Volatility (ATR, Historical)', 'volatility', True),
-                ('🕯️ Candlestick Patterns', 'patterns', True),
-                ('🌀 Fibonacci Retracements', 'fibonacci', True),
-                ('🔗 Support/Resistance Levels', 'support_resistance', True)
-            ]
-
-            for name, key, default in indicators:
-                var = tk.BooleanVar(value=default)
-                self.indicator_vars[key] = var
-
-                cb_frame = ttk.Frame(tech_card, style='Professional.TFrame')
-                cb_frame.pack(fill=tk.X, pady=3)
-
-                cb = tk.Checkbutton(cb_frame,
-                                    text=name,
-                                    variable=var,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                cb.pack(anchor=tk.W)
-
-            # Smart Money Analysis
-            smart_label = ttk.Label(tech_card,
-                                    text="Smart Money Analysis:",
-                                    style='Subheading.TLabel')
-            smart_label.pack(anchor=tk.W, pady=(20, 10))
-
-            self.smart_money_vars = {}
-            smart_money_features = [
-                ('💰 Wyckoff Methodology', 'wyckoff', True),
-                ('🏛️ Institutional Flow Detection', 'institutional', True),
-                ('📊 Volume Profile Analysis', 'volume_profile', True),
-                ('🏗️ Market Structure Analysis', 'market_structure', True)
-            ]
-
-            for name, key, default in smart_money_features:
-                var = tk.BooleanVar(value=default)
-                self.smart_money_vars[key] = var
-
-                cb_frame = ttk.Frame(tech_card, style='Professional.TFrame')
-                cb_frame.pack(fill=tk.X, pady=3)
-
-                cb = tk.Checkbutton(cb_frame,
-                                    text=name,
-                                    variable=var,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                cb.pack(anchor=tk.W)
-
-            # Right column - Parameters
-            right_column = ttk.Frame(columns_frame, style='Professional.TFrame')
-            right_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0))
-
-            params_card = self.create_card(right_column, "⚙️ Analysis Parameters")
-
-            # Prediction settings
-            pred_label = ttk.Label(params_card,
-                                   text="Prediction Settings:",
+        # Ensemble models section
+        ensemble_label = ttk.Label(ml_card,
+                                   text="Ensemble Models:",
                                    style='Subheading.TLabel')
-            pred_label.pack(anchor=tk.W, pady=(0, 10))
+        ensemble_label.pack(anchor=tk.W, pady=(0, 10))
 
-            # Prediction horizon
-            horizon_frame = ttk.Frame(params_card, style='Professional.TFrame')
-            horizon_frame.pack(fill=tk.X, pady=10)
+        self.model_vars = {}
+        models = [
+            ('🌳 Random Forest (Tree-based ensemble)', 'rf', True),
+            ('🚀 XGBoost (Gradient boosting)', 'xgb', True),
+            ('⚡ LightGBM (Fast gradient boosting)', 'lgb', True),
+            ('🐱 CatBoost (Categorical features)', 'cb', True),
+            ('🎲 Extra Trees (Randomized trees)', 'et', True),
+            ('🗳️ Voting Regressor (Meta-ensemble)', 'voting', True),
+            ('📚 Stacking Regressor (Layered ensemble)', 'stacking', True)
+        ]
 
-            horizon_label = ttk.Label(horizon_frame,
-                                      text="Prediction Horizon (days):",
-                                      style='Body.TLabel')
-            horizon_label.pack(anchor=tk.W)
+        for name, key, default in models:
+            var = tk.BooleanVar(value=default)
+            self.model_vars[key] = var
 
-            self.prediction_days = tk.IntVar(value=5)
-            horizon_scale = tk.Scale(horizon_frame,
-                                     from_=1, to=30,
-                                     variable=self.prediction_days,
-                                     orient=tk.HORIZONTAL,
+            cb_frame = ttk.Frame(ml_card, style='Professional.TFrame')
+            cb_frame.pack(fill=tk.X, pady=3)
+
+            cb = tk.Checkbutton(cb_frame,
+                                text=name,
+                                variable=var,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            cb.pack(anchor=tk.W)
+
+        # Deep Learning section
+        dl_label = ttk.Label(ml_card,
+                             text="Deep Learning Models:",
+                             style='Subheading.TLabel')
+        dl_label.pack(anchor=tk.W, pady=(20, 10))
+
+        self.dl_vars = {}
+        dl_models = [
+            ('🧠 LSTM (Long Short-Term Memory)', 'lstm', DEEP_LEARNING_AVAILABLE),
+            ('🔄 GRU (Gated Recurrent Unit)', 'gru', DEEP_LEARNING_AVAILABLE),
+            ('🌊 CNN-LSTM Hybrid', 'cnn_lstm', DEEP_LEARNING_AVAILABLE),
+            ('🎯 Attention-based LSTM', 'attention_lstm', DEEP_LEARNING_AVAILABLE)
+        ]
+
+        for name, key, available in dl_models:
+            var = tk.BooleanVar(value=available)
+            self.dl_vars[key] = var
+
+            cb_frame = ttk.Frame(ml_card, style='Professional.TFrame')
+            cb_frame.pack(fill=tk.X, pady=3)
+
+            cb = tk.Checkbutton(cb_frame,
+                                text=name,
+                                variable=var,
+                                state='normal' if available else 'disabled',
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'] if available else self.colors['medium_gray'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            cb.pack(anchor=tk.W)
+
+        if not DEEP_LEARNING_AVAILABLE:
+            warning_label = tk.Label(ml_card,
+                                     text="⚠️ TensorFlow not available - Deep Learning disabled",
                                      bg=self.colors['white'],
-                                     fg=self.colors['dark_blue'],
-                                     highlightthickness=0,
-                                     troughcolor=self.colors['light_gray'],
-                                     activebackground=self.colors['primary_blue'],
-                                     command=self.update_prediction_label)
-            horizon_scale.pack(fill=tk.X, pady=5)
+                                     fg=self.colors['warning_orange'],
+                                     font=('Segoe UI', 9))
+            warning_label.pack(anchor=tk.W, pady=(5, 0))
 
-            self.prediction_label = ttk.Label(horizon_frame,
-                                              text="5 days",
-                                              style='Body.TLabel')
-            self.prediction_label.pack(anchor=tk.W)
+        # Center column - Technical Analysis
+        center_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        center_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
 
-            # Model optimization
-            opt_label = ttk.Label(params_card,
-                                  text="Model Optimization:",
-                                  style='Subheading.TLabel')
-            opt_label.pack(anchor=tk.W, pady=(20, 10))
+        tech_card = self.create_card(center_column, "📈 Technical Analysis")
 
-            self.optimization_vars = {}
-            optimization_options = [
-                ('🔍 Hyperparameter Tuning (GridSearch)', 'grid_search', True),
-                ('📊 Cross-Validation (Time Series)', 'cross_validation', True),
-                ('🎯 Feature Selection (Auto)', 'feature_selection', True),
-                ('⚖️ Ensemble Weighting', 'ensemble_weighting', True)
-            ]
+        # Technical indicators
+        indicators_label = ttk.Label(tech_card,
+                                     text="Technical Indicators:",
+                                     style='Subheading.TLabel')
+        indicators_label.pack(anchor=tk.W, pady=(0, 10))
 
-            for name, key, default in optimization_options:
-                var = tk.BooleanVar(value=default)
-                self.optimization_vars[key] = var
+        self.indicator_vars = {}
+        indicators = [
+            ('📊 Moving Averages (SMA, EMA, WMA)', 'ma', True),
+            ('⚡ RSI & Stochastic Oscillators', 'momentum', True),
+            ('📈 MACD (Multiple timeframes)', 'macd', True),
+            ('🔵 Bollinger Bands (Multiple periods)', 'bb', True),
+            ('📉 Williams %R', 'williams', True),
+            ('📊 Volume Indicators (OBV, VPT)', 'volume', True),
+            ('💨 Volatility (ATR, Historical)', 'volatility', True),
+            ('🕯️ Candlestick Patterns', 'patterns', True),
+            ('🌀 Fibonacci Retracements', 'fibonacci', True),
+            ('🔗 Support/Resistance Levels', 'support_resistance', True)
+        ]
 
-                cb_frame = ttk.Frame(params_card, style='Professional.TFrame')
-                cb_frame.pack(fill=tk.X, pady=3)
+        for name, key, default in indicators:
+            var = tk.BooleanVar(value=default)
+            self.indicator_vars[key] = var
 
-                cb = tk.Checkbutton(cb_frame,
-                                    text=name,
-                                    variable=var,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 9),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                cb.pack(anchor=tk.W)
+            cb_frame = ttk.Frame(tech_card, style='Professional.TFrame')
+            cb_frame.pack(fill=tk.X, pady=3)
 
-            # Advanced settings
-            advanced_label = ttk.Label(params_card,
-                                       text="Advanced Settings:",
-                                       style='Subheading.TLabel')
-            advanced_label.pack(anchor=tk.W, pady=(20, 10))
+            cb = tk.Checkbutton(cb_frame,
+                                text=name,
+                                variable=var,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            cb.pack(anchor=tk.W)
 
-            # Training split
-            split_frame = ttk.Frame(params_card, style='Professional.TFrame')
-            split_frame.pack(fill=tk.X, pady=5)
+        # Smart Money Analysis
+        smart_label = ttk.Label(tech_card,
+                                text="Smart Money Analysis:",
+                                style='Subheading.TLabel')
+        smart_label.pack(anchor=tk.W, pady=(20, 10))
 
-            split_label = ttk.Label(split_frame,
-                                    text="Training Split:",
-                                    style='Body.TLabel')
-            split_label.pack(anchor=tk.W)
+        self.smart_money_vars = {}
+        smart_money_features = [
+            ('💰 Wyckoff Methodology', 'wyckoff', True),
+            ('🏛️ Institutional Flow Detection', 'institutional', True),
+            ('📊 Volume Profile Analysis', 'volume_profile', True),
+            ('🏗️ Market Structure Analysis', 'market_structure', True)
+        ]
 
-            self.train_split = tk.DoubleVar(value=0.8)
-            split_scale = tk.Scale(split_frame,
-                                   from_=0.6, to=0.9,
-                                   variable=self.train_split,
-                                   orient=tk.HORIZONTAL,
-                                   resolution=0.05,
-                                   bg=self.colors['white'],
-                                   fg=self.colors['dark_blue'],
-                                   highlightthickness=0,
-                                   troughcolor=self.colors['light_gray'],
-                                   activebackground=self.colors['primary_blue'])
-            split_scale.pack(fill=tk.X, pady=2)
+        for name, key, default in smart_money_features:
+            var = tk.BooleanVar(value=default)
+            self.smart_money_vars[key] = var
 
-            # LSTM sequence length
-            seq_frame = ttk.Frame(params_card, style='Professional.TFrame')
-            seq_frame.pack(fill=tk.X, pady=5)
+            cb_frame = ttk.Frame(tech_card, style='Professional.TFrame')
+            cb_frame.pack(fill=tk.X, pady=3)
 
-            seq_label = ttk.Label(seq_frame,
-                                  text="LSTM Sequence Length:",
+            cb = tk.Checkbutton(cb_frame,
+                                text=name,
+                                variable=var,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            cb.pack(anchor=tk.W)
+
+        # Right column - Parameters
+        right_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        right_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0))
+
+        params_card = self.create_card(right_column, "⚙️ Analysis Parameters")
+
+        # Prediction settings
+        pred_label = ttk.Label(params_card,
+                               text="Prediction Settings:",
+                               style='Subheading.TLabel')
+        pred_label.pack(anchor=tk.W, pady=(0, 10))
+
+        # Prediction horizon
+        horizon_frame = ttk.Frame(params_card, style='Professional.TFrame')
+        horizon_frame.pack(fill=tk.X, pady=10)
+
+        horizon_label = ttk.Label(horizon_frame,
+                                  text="Prediction Horizon (days):",
                                   style='Body.TLabel')
-            seq_label.pack(anchor=tk.W)
+        horizon_label.pack(anchor=tk.W)
 
-            self.sequence_length = tk.IntVar(value=60)
-            seq_scale = tk.Scale(seq_frame,
-                                 from_=20, to=120,
-                                 variable=self.sequence_length,
+        self.prediction_days = tk.IntVar(value=5)
+        horizon_scale = tk.Scale(horizon_frame,
+                                 from_=1, to=30,
+                                 variable=self.prediction_days,
                                  orient=tk.HORIZONTAL,
                                  bg=self.colors['white'],
                                  fg=self.colors['dark_blue'],
                                  highlightthickness=0,
                                  troughcolor=self.colors['light_gray'],
-                                 activebackground=self.colors['primary_blue'])
-            seq_scale.pack(fill=tk.X, pady=2)
+                                 activebackground=self.colors['primary_blue'],
+                                 command=self.update_prediction_label)
+        horizon_scale.pack(fill=tk.X, pady=5)
 
-            # Control buttons
-            controls_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            controls_frame.pack(fill=tk.X, pady=30)
+        self.prediction_label = ttk.Label(horizon_frame,
+                                          text="5 days",
+                                          style='Body.TLabel')
+        self.prediction_label.pack(anchor=tk.W)
 
-            # Create button row
-            button_row = ttk.Frame(controls_frame, style='Professional.TFrame')
-            button_row.pack(anchor=tk.CENTER)
+        # Model optimization
+        opt_label = ttk.Label(params_card,
+                              text="Model Optimization:",
+                              style='Subheading.TLabel')
+        opt_label.pack(anchor=tk.W, pady=(20, 10))
 
-            validate_btn = tk.Button(button_row,
-                                     text="🔍 Validate Configuration",
-                                     command=self.validate_configuration,
-                                     bg=self.colors['light_blue'],
-                                     fg=self.colors['dark_blue'],
-                                     font=('Segoe UI', 11),
-                                     relief='flat',
-                                     pady=12,
-                                     padx=20,
-                                     cursor='hand2')
-            validate_btn.pack(side=tk.LEFT, padx=(0, 15))
+        self.optimization_vars = {}
+        optimization_options = [
+            ('🔍 Hyperparameter Tuning (GridSearch)', 'grid_search', True),
+            ('📊 Cross-Validation (Time Series)', 'cross_validation', True),
+            ('🎯 Feature Selection (Auto)', 'feature_selection', True),
+            ('⚖️ Ensemble Weighting', 'ensemble_weighting', True)
+        ]
 
-            start_btn = tk.Button(button_row,
-                                  text="🚀 Start Complete Analysis",
-                                  command=self.start_analysis,
-                                  bg=self.colors['success_green'],
-                                  fg='white',
-                                  font=('Segoe UI', 12, 'bold'),
-                                  relief='flat',
-                                  pady=15,
-                                  padx=30,
-                                  cursor='hand2')
-            start_btn.pack(side=tk.LEFT, padx=(0, 15))
+        for name, key, default in optimization_options:
+            var = tk.BooleanVar(value=default)
+            self.optimization_vars[key] = var
 
-            save_btn = tk.Button(button_row,
-                                 text="💾 Save Configuration",
-                                 command=self.save_configuration,
-                                 bg=self.colors['medium_gray'],
+            cb_frame = ttk.Frame(params_card, style='Professional.TFrame')
+            cb_frame.pack(fill=tk.X, pady=3)
+
+            cb = tk.Checkbutton(cb_frame,
+                                text=name,
+                                variable=var,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 9),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            cb.pack(anchor=tk.W)
+
+        # Advanced settings
+        advanced_label = ttk.Label(params_card,
+                                   text="Advanced Settings:",
+                                   style='Subheading.TLabel')
+        advanced_label.pack(anchor=tk.W, pady=(20, 10))
+
+        # Training split
+        split_frame = ttk.Frame(params_card, style='Professional.TFrame')
+        split_frame.pack(fill=tk.X, pady=5)
+
+        split_label = ttk.Label(split_frame,
+                                text="Training Split:",
+                                style='Body.TLabel')
+        split_label.pack(anchor=tk.W)
+
+        self.train_split = tk.DoubleVar(value=0.8)
+        split_scale = tk.Scale(split_frame,
+                               from_=0.6, to=0.9,
+                               variable=self.train_split,
+                               orient=tk.HORIZONTAL,
+                               resolution=0.05,
+                               bg=self.colors['white'],
+                               fg=self.colors['dark_blue'],
+                               highlightthickness=0,
+                               troughcolor=self.colors['light_gray'],
+                               activebackground=self.colors['primary_blue'])
+        split_scale.pack(fill=tk.X, pady=2)
+
+        # LSTM sequence length
+        seq_frame = ttk.Frame(params_card, style='Professional.TFrame')
+        seq_frame.pack(fill=tk.X, pady=5)
+
+        seq_label = ttk.Label(seq_frame,
+                              text="LSTM Sequence Length:",
+                              style='Body.TLabel')
+        seq_label.pack(anchor=tk.W)
+
+        self.sequence_length = tk.IntVar(value=60)
+        seq_scale = tk.Scale(seq_frame,
+                             from_=20, to=120,
+                             variable=self.sequence_length,
+                             orient=tk.HORIZONTAL,
+                             bg=self.colors['white'],
+                             fg=self.colors['dark_blue'],
+                             highlightthickness=0,
+                             troughcolor=self.colors['light_gray'],
+                             activebackground=self.colors['primary_blue'])
+        seq_scale.pack(fill=tk.X, pady=2)
+
+        # Control buttons
+        controls_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        controls_frame.pack(fill=tk.X, pady=30)
+
+        # Create button row
+        button_row = ttk.Frame(controls_frame, style='Professional.TFrame')
+        button_row.pack(anchor=tk.CENTER)
+
+        validate_btn = tk.Button(button_row,
+                                 text="🔍 Validate Configuration",
+                                 command=self.validate_configuration,
+                                 bg=self.colors['light_blue'],
                                  fg=self.colors['dark_blue'],
                                  font=('Segoe UI', 11),
                                  relief='flat',
                                  pady=12,
                                  padx=20,
                                  cursor='hand2')
-            save_btn.pack(side=tk.LEFT, padx=(0, 15))
+        validate_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            load_btn = tk.Button(button_row,
-                                 text="📂 Load Configuration",
-                                 command=self.load_configuration,
-                                 bg=self.colors['medium_gray'],
-                                 fg=self.colors['dark_blue'],
-                                 font=('Segoe UI', 11),
-                                 relief='flat',
-                                 pady=12,
-                                 padx=20,
-                                 cursor='hand2')
-            load_btn.pack(side=tk.LEFT)
+        start_btn = tk.Button(button_row,
+                              text="🚀 Start Complete Analysis",
+                              command=self.start_analysis,
+                              bg=self.colors['success_green'],
+                              fg='white',
+                              font=('Segoe UI', 12, 'bold'),
+                              relief='flat',
+                              pady=15,
+                              padx=30,
+                              cursor='hand2')
+        start_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            # Progress section
-            progress_card = self.create_card(content_frame, "📊 Analysis Progress")
+        save_btn = tk.Button(button_row,
+                             text="💾 Save Configuration",
+                             command=self.save_configuration,
+                             bg=self.colors['medium_gray'],
+                             fg=self.colors['dark_blue'],
+                             font=('Segoe UI', 11),
+                             relief='flat',
+                             pady=12,
+                             padx=20,
+                             cursor='hand2')
+        save_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            # Progress bar - FIXED: Removed custom style that doesn't exist
-            self.progress = ttk.Progressbar(progress_card,
-                                            orient='horizontal',
-                                            mode='indeterminate',
-                                            length=400)
-            self.progress.pack(fill=tk.X, pady=(0, 15))
+        load_btn = tk.Button(button_row,
+                             text="📂 Load Configuration",
+                             command=self.load_configuration,
+                             bg=self.colors['medium_gray'],
+                             fg=self.colors['dark_blue'],
+                             font=('Segoe UI', 11),
+                             relief='flat',
+                             pady=12,
+                             padx=20,
+                             cursor='hand2')
+        load_btn.pack(side=tk.LEFT)
 
-            # Progress details
-            self.progress_text = tk.Text(progress_card,
-                                         height=6,
-                                         bg=self.colors['white'],
-                                         fg=self.colors['dark_blue'],
-                                         font=('Consolas', 9),
-                                         relief='solid',
-                                         bd=1,
-                                         wrap=tk.WORD)
-            self.progress_text.pack(fill=tk.X)
+        # Progress section
+        progress_card = self.create_card(content_frame, "📊 Analysis Progress")
 
-            # Pack scrollable components
-            canvas.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
+        # Progress bar - FIXED: Removed custom style that doesn't exist
+        self.progress = ttk.Progressbar(progress_card,
+                                        orient='horizontal',
+                                        mode='indeterminate',
+                                        length=400)
+        self.progress.pack(fill=tk.X, pady=(0, 15))
 
-        def create_predictions_tab(self):
-            """Create professional predictions display tab"""
-            pred_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
-            self.notebook.add(pred_frame, text="📈 Smart Predictions")
-
-            # Main content with padding
-            content_frame = ttk.Frame(pred_frame, style='Professional.TFrame')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
-
-            # Header
-            header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            header_frame.pack(fill=tk.X, pady=(0, 20))
-
-            title_label = ttk.Label(header_frame,
-                                    text="AI-Powered Market Predictions",
-                                    style='Title.TLabel')
-            title_label.pack(anchor=tk.W)
-
-            subtitle_label = ttk.Label(header_frame,
-                                       text="Advanced ML predictions with confidence intervals and risk assessment",
-                                       style='Body.TLabel')
-            subtitle_label.pack(anchor=tk.W, pady=(5, 0))
-
-            # Control panel
-            control_card = self.create_card(content_frame, "🎛️ Prediction Controls")
-
-            controls_row = ttk.Frame(control_card, style='Professional.TFrame')
-            controls_row.pack(fill=tk.X)
-
-            # Control buttons
-            refresh_btn = tk.Button(controls_row,
-                                    text="🔄 Refresh Predictions",
-                                    command=self.refresh_predictions,
-                                    bg=self.colors['primary_blue'],
-                                    fg='white',
-                                    font=('Segoe UI', 10, 'bold'),
-                                    relief='flat',
-                                    pady=10,
-                                    padx=15,
-                                    cursor='hand2')
-            refresh_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-            compare_btn = tk.Button(controls_row,
-                                    text="📊 Compare Models",
-                                    command=self.compare_models,
-                                    bg=self.colors['light_blue'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    relief='flat',
-                                    pady=10,
-                                    padx=15,
-                                    cursor='hand2')
-            compare_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-            export_btn = tk.Button(controls_row,
-                                   text="💾 Export Predictions",
-                                   command=self.export_predictions,      #break#2
-                                   bg=self.colors['medium_gray'],
-                                   fg=self.colors['dark_blue'],
-                                   font=('Segoe UI', 10),
-                                   relief='flat',
-                                   pady=10,
-                                   padx=15,
-                                   cursor='hand2')
-            export_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-            # Auto-update option
-            auto_frame = ttk.Frame(controls_row, style='Professional.TFrame')
-            auto_frame.pack(side=tk.RIGHT)
-
-            auto_cb = tk.Checkbutton(auto_frame,
-                                     text="🔄 Auto-update",
-                                     variable=self.auto_update_predictions,
+        # Progress details
+        self.progress_text = tk.Text(progress_card,
+                                     height=6,
                                      bg=self.colors['white'],
                                      fg=self.colors['dark_blue'],
-                                     font=('Segoe UI', 10),
-                                     selectcolor=self.colors['primary_blue'],
-                                     activebackground=self.colors['white'])
-            auto_cb.pack(side=tk.RIGHT)
+                                     font=('Consolas', 9),
+                                     relief='solid',
+                                     bd=1,
+                                     wrap=tk.WORD)
+        self.progress_text.pack(fill=tk.X)
 
-            # Predictions display with multiple views
-            display_card = self.create_card(content_frame, "🎯 Prediction Results")
+        # Pack scrollable components
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-            pred_notebook = ttk.Notebook(display_card, style='Professional.TNotebook')
-            pred_notebook.pack(fill=tk.BOTH, expand=True, pady=10)
+    def create_shap_explainability_tab(self):
+        """Create SHAP explainability analysis tab"""
+        shap_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        #self.notebook.insert(3, shap_frame, text="🔍 Model Explainability")
+        self.notebook.add(shap_frame, text="🔍 Model Explainability")
 
-            # Summary tab
-            summary_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
-            pred_notebook.add(summary_tab, text="📋 Executive Summary")
+        # Main content
+        content_frame = ttk.Frame(shap_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
 
-            summary_frame = ttk.Frame(summary_tab, style='Professional.TFrame')
-            summary_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 20))
 
-            self.predictions_text = tk.Text(summary_frame,
+        title_label = ttk.Label(header_frame,
+                                text="SHAP Model Explainability & Feature Analysis",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
+
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Understand how AI models make predictions using SHAP (SHapley Additive exPlanations)",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+
+        # SHAP Status Card
+        status_card = self.create_card(content_frame, "🔍 SHAP Analysis Status")
+
+        self.shap_status_label = tk.Label(status_card,
+                                          text="📊 SHAP analysis will be available after completing model training.\n\n"
+                                               "Features included:\n"
+                                               "• Feature importance ranking with SHAP values\n"
+                                               "• Model decision explanation\n"
+                                               "• Prediction contribution analysis\n"
+                                               "• Transparent AI decision making",
+                                          font=('Segoe UI', 11),
+                                          bg=self.colors['white'],
+                                          fg=self.colors['dark_blue'],
+                                          justify=tk.LEFT)
+        self.shap_status_label.pack(pady=20)
+
+        # Model Explanations Display
+        explanations_card = self.create_card(content_frame, "📊 Model Explanations")
+
+        self.shap_text = tk.Text(explanations_card,
+                                 height=20,
+                                 bg=self.colors['white'],
+                                 fg=self.colors['dark_blue'],
+                                 font=('Consolas', 10),
+                                 relief='solid',
+                                 bd=1,
+                                 wrap=tk.WORD,
+                                 padx=15,
+                                 pady=15)
+
+        shap_scroll = ttk.Scrollbar(explanations_card, orient="vertical", command=self.shap_text.yview)
+        self.shap_text.configure(yscrollcommand=shap_scroll.set)
+
+        self.shap_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        shap_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def create_advanced_risk_tab(self):
+        """Create advanced risk management tab with SL/TP analysis"""
+        risk_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        #self.notebook.insert(6, risk_frame, text="🎯 Advanced Risk & SL/TP")
+        self.notebook.add(risk_frame, text="🎯 Advanced Risk & SL/TP")
+
+        # Main content
+        content_frame = ttk.Frame(risk_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+
+        title_label = ttk.Label(header_frame,
+                                text="Advanced Risk Management & Stop Loss/Take Profit Analysis",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
+
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Monte Carlo simulations for optimal position sizing and risk management",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+
+        # Two-column layout
+        columns_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        columns_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Left column - SL/TP Analysis
+        left_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15))
+
+        sl_tp_card = self.create_card(left_column, "🎯 Stop Loss / Take Profit Analysis")
+
+        self.sl_tp_display = tk.Text(sl_tp_card,
+                                     height=15,
+                                     bg=self.colors['white'],
+                                     fg=self.colors['dark_blue'],
+                                     font=('Consolas', 10),
+                                     relief='solid',
+                                     bd=1,
+                                     wrap=tk.WORD,
+                                     padx=15,
+                                     pady=15)
+
+        sl_tp_scroll = ttk.Scrollbar(sl_tp_card, orient="vertical", command=self.sl_tp_display.yview)
+        self.sl_tp_display.configure(yscrollcommand=sl_tp_scroll.set)
+
+        self.sl_tp_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sl_tp_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Right column - Monte Carlo Results
+        right_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(15, 0))
+
+        mc_card = self.create_card(right_column, "🎲 Monte Carlo Simulation Results")
+
+        self.monte_carlo_display = tk.Text(mc_card,
+                                           height=15,
+                                           bg=self.colors['white'],
+                                           fg=self.colors['dark_blue'],
+                                           font=('Consolas', 10),
+                                           relief='solid',
+                                           bd=1,
+                                           wrap=tk.WORD,
+                                           padx=15,
+                                           pady=15)
+
+        mc_scroll = ttk.Scrollbar(mc_card, orient="vertical", command=self.monte_carlo_display.yview)
+        self.monte_carlo_display.configure(yscrollcommand=mc_scroll.set)
+
+        self.monte_carlo_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        mc_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Control buttons
+        controls_card = self.create_card(content_frame, "⚙️ Risk Analysis Controls")
+
+        button_row = ttk.Frame(controls_card, style='Professional.TFrame')
+        button_row.pack(anchor=tk.CENTER, pady=10)
+
+        calc_risk_btn = tk.Button(button_row,
+                                  text="🎯 Calculate Optimal SL/TP",
+                                  command=self.on_calculate_sl_tp_button_click,  # UPDATED REFERENCE
+                                  bg=self.colors['primary_blue'],
+                                  fg='white',
+                                  font=('Segoe UI', 11, 'bold'),
+                                  relief='flat',
+                                  pady=12,
+                                  padx=20,
+                                  cursor='hand2')
+        calc_risk_btn.pack(side=tk.LEFT, padx=(0, 15))
+
+        run_mc_btn = tk.Button(button_row,
+                               text="🎲 Run Monte Carlo Analysis",
+                               command=self.on_run_monte_carlo_button_click,  # UPDATED
+                               bg=self.colors['light_blue'],
+                               fg=self.colors['dark_blue'],
+                               font=('Segoe UI', 11),
+                               relief='flat',
+                               pady=12,
+                               padx=20,
+                               cursor='hand2')
+        run_mc_btn.pack(side=tk.LEFT, padx=(0, 15))
+
+        export_risk_btn = tk.Button(button_row,
+                                    text="💾 Export Risk Analysis",
+                                    command=self.on_export_risk_analysis_button_click,  # UPDATED
+                                    bg=self.colors['medium_gray'],
+                                    fg=self.colors['dark_blue'],
+                                    font=('Segoe UI', 11),
+                                    relief='flat',
+                                    pady=12,
+                                    padx=20,
+                                    cursor='hand2')
+        export_risk_btn.pack(side=tk.LEFT)
+
+    def create_predictions_tab(self):
+        """Create professional predictions display tab"""
+        pred_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        self.notebook.add(pred_frame, text="📈 Smart Predictions")
+
+        # Main content with padding
+        content_frame = ttk.Frame(pred_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+
+        title_label = ttk.Label(header_frame,
+                                text="AI-Powered Market Predictions",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
+
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Advanced ML predictions with confidence intervals and risk assessment",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+
+        # Control panel
+        control_card = self.create_card(content_frame, "🎛️ Prediction Controls")
+
+        controls_row = ttk.Frame(control_card, style='Professional.TFrame')
+        controls_row.pack(fill=tk.X)
+
+        # Control buttons
+        refresh_btn = tk.Button(controls_row,
+                                text="🔄 Refresh Predictions",
+                                command=self.refresh_predictions,
+                                bg=self.colors['primary_blue'],
+                                fg='white',
+                                font=('Segoe UI', 10, 'bold'),
+                                relief='flat',
+                                pady=10,
+                                padx=15,
+                                cursor='hand2')
+        refresh_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        compare_btn = tk.Button(controls_row,
+                                text="📊 Compare Models",
+                                command=self.compare_models,
+                                bg=self.colors['light_blue'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                relief='flat',
+                                pady=10,
+                                padx=15,
+                                cursor='hand2')
+        compare_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        export_btn = tk.Button(controls_row,
+                               text="💾 Export Predictions",
+                               command=self.export_predictions,  # break#2
+                               bg=self.colors['medium_gray'],
+                               fg=self.colors['dark_blue'],
+                               font=('Segoe UI', 10),
+                               relief='flat',
+                               pady=10,
+                               padx=15,
+                               cursor='hand2')
+        export_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Auto-update option
+        auto_frame = ttk.Frame(controls_row, style='Professional.TFrame')
+        auto_frame.pack(side=tk.RIGHT)
+
+        auto_cb = tk.Checkbutton(auto_frame,
+                                 text="🔄 Auto-update",
+                                 variable=self.auto_update_predictions,
+                                 bg=self.colors['white'],
+                                 fg=self.colors['dark_blue'],
+                                 font=('Segoe UI', 10),
+                                 selectcolor=self.colors['primary_blue'],
+                                 activebackground=self.colors['white'])
+        auto_cb.pack(side=tk.RIGHT)
+
+        # Predictions display with multiple views
+        display_card = self.create_card(content_frame, "🎯 Prediction Results")
+
+        pred_notebook = ttk.Notebook(display_card, style='Professional.TNotebook')
+        pred_notebook.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        # Summary tab
+        summary_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
+        pred_notebook.add(summary_tab, text="📋 Executive Summary")
+
+        summary_frame = ttk.Frame(summary_tab, style='Professional.TFrame')
+        summary_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        self.predictions_text = tk.Text(summary_frame,
+                                        bg=self.colors['white'],
+                                        fg=self.colors['dark_blue'],
+                                        font=('Segoe UI', 11),
+                                        wrap=tk.WORD,
+                                        relief='solid',
+                                        bd=1,
+                                        padx=15,
+                                        pady=15)
+
+        summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.predictions_text.yview)
+        self.predictions_text.configure(yscrollcommand=summary_scroll.set)
+
+        self.predictions_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        summary_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Detailed analysis tab
+        detailed_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
+        pred_notebook.add(detailed_tab, text="🔍 Detailed Analysis")
+
+        detailed_frame = ttk.Frame(detailed_tab, style='Professional.TFrame')
+        detailed_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        self.detailed_predictions = tk.Text(detailed_frame,
                                             bg=self.colors['white'],
                                             fg=self.colors['dark_blue'],
-                                            font=('Segoe UI', 11),
+                                            font=('Consolas', 10),
                                             wrap=tk.WORD,
                                             relief='solid',
                                             bd=1,
                                             padx=15,
                                             pady=15)
 
-            summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.predictions_text.yview)
-            self.predictions_text.configure(yscrollcommand=summary_scroll.set)
+        detailed_scroll = ttk.Scrollbar(detailed_frame, orient="vertical", command=self.detailed_predictions.yview)
+        self.detailed_predictions.configure(yscrollcommand=detailed_scroll.set)
 
-            self.predictions_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            summary_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.detailed_predictions.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        detailed_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-            # Detailed analysis tab
-            detailed_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
-            pred_notebook.add(detailed_tab, text="🔍 Detailed Analysis")
+        # Confidence visualization tab
+        confidence_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
+        pred_notebook.add(confidence_tab, text="🎯 Confidence Metrics")
 
-            detailed_frame = ttk.Frame(detailed_tab, style='Professional.TFrame')
-            detailed_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        self.confidence_frame = ttk.Frame(confidence_tab, style='Professional.TFrame')
+        self.confidence_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
-            self.detailed_predictions = tk.Text(detailed_frame,
-                                                bg=self.colors['white'],
-                                                fg=self.colors['dark_blue'],
-                                                font=('Consolas', 10),
-                                                wrap=tk.WORD,
-                                                relief='solid',
-                                                bd=1,
-                                                padx=15,
-                                                pady=15)
+        # Risk assessment tab
+        risk_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
+        pred_notebook.add(risk_tab, text="⚠️ Risk Assessment")
 
-            detailed_scroll = ttk.Scrollbar(detailed_frame, orient="vertical", command=self.detailed_predictions.yview)
-            self.detailed_predictions.configure(yscrollcommand=detailed_scroll.set)
+        risk_frame = ttk.Frame(risk_tab, style='Professional.TFrame')
+        risk_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
-            self.detailed_predictions.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            detailed_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.risk_text = tk.Text(risk_frame,
+                                 bg=self.colors['white'],
+                                 fg=self.colors['dark_blue'],
+                                 font=('Segoe UI', 10),
+                                 wrap=tk.WORD,
+                                 relief='solid',
+                                 bd=1,
+                                 padx=15,
+                                 pady=15)
 
-            # Confidence visualization tab
-            confidence_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
-            pred_notebook.add(confidence_tab, text="🎯 Confidence Metrics")
+        risk_scroll = ttk.Scrollbar(risk_frame, orient="vertical", command=self.risk_text.yview)
+        self.risk_text.configure(yscrollcommand=risk_scroll.set)
 
-            self.confidence_frame = ttk.Frame(confidence_tab, style='Professional.TFrame')
-            self.confidence_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        self.risk_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        risk_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-            # Risk assessment tab
-            risk_tab = ttk.Frame(pred_notebook, style='Professional.TFrame')
-            pred_notebook.add(risk_tab, text="⚠️ Risk Assessment")
+    def create_charts_tab(self):
+        """Create professional interactive charts tab"""
+        charts_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        self.notebook.add(charts_frame, text="📊 Professional Charts")
 
-            risk_frame = ttk.Frame(risk_tab, style='Professional.TFrame')
-            risk_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        # Main content
+        content_frame = ttk.Frame(charts_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
 
-            self.risk_text = tk.Text(risk_frame,
-                                     bg=self.colors['white'],
-                                     fg=self.colors['dark_blue'],
-                                     font=('Segoe UI', 10),
-                                     wrap=tk.WORD,
-                                     relief='solid',
-                                     bd=1,
-                                     padx=15,
-                                     pady=15)
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 20))
 
-            risk_scroll = ttk.Scrollbar(risk_frame, orient="vertical", command=self.risk_text.yview)
-            self.risk_text.configure(yscrollcommand=risk_scroll.set)
+        title_label = ttk.Label(header_frame,
+                                text="Professional Trading Charts",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
 
-            self.risk_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            risk_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Interactive charts with technical analysis and smart money flow indicators",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
 
-        def create_charts_tab(self):
-            """Create professional interactive charts tab"""
-            charts_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
-            self.notebook.add(charts_frame, text="📊 Professional Charts")
+        # Chart controls card
+        controls_card = self.create_card(content_frame, "📈 Chart Configuration")
 
-            # Main content
-            content_frame = ttk.Frame(charts_frame, style='Professional.TFrame')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+        # Chart type selection
+        type_frame = ttk.Frame(controls_card, style='Professional.TFrame')
+        type_frame.pack(fill=tk.X, pady=(0, 15))
 
-            # Header
-            header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            header_frame.pack(fill=tk.X, pady=(0, 20))
+        type_label = ttk.Label(type_frame,
+                               text="Chart Type:",
+                               style='Subheading.TLabel')
+        type_label.pack(side=tk.LEFT, padx=(0, 20))
 
-            title_label = ttk.Label(header_frame,
-                                    text="Professional Trading Charts",
-                                    style='Title.TLabel')
-            title_label.pack(anchor=tk.W)
+        self.chart_type = tk.StringVar(value="comprehensive")
+        chart_types = [
+            ("📊 Comprehensive Dashboard", "comprehensive"),
+            ("💰 Price Action Only", "price"),
+            ("📈 Technical Indicators", "technical"),
+            ("📊 Volume Analysis", "volume"),
+            ("💎 Smart Money Flow", "smart_money")
+        ]
 
-            subtitle_label = ttk.Label(header_frame,
-                                       text="Interactive charts with technical analysis and smart money flow indicators",
-                                       style='Body.TLabel')
-            subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+        for text, value in chart_types:
+            rb = tk.Radiobutton(type_frame,
+                                text=text,
+                                variable=self.chart_type,
+                                value=value,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            rb.pack(side=tk.LEFT, padx=(0, 15))
 
-            # Chart controls card
-            controls_card = self.create_card(content_frame, "📈 Chart Configuration")
+        # Chart generation buttons
+        button_frame = ttk.Frame(controls_card, style='Professional.TFrame')
+        button_frame.pack(fill=tk.X, pady=15)
 
-            # Chart type selection
-            type_frame = ttk.Frame(controls_card, style='Professional.TFrame')
-            type_frame.pack(fill=tk.X, pady=(0, 15))
+        generate_btn = tk.Button(button_frame,
+                                 text="📊 Generate Charts",
+                                 command=self.generate_charts,
+                                 bg=self.colors['primary_blue'],
+                                 fg='white',
+                                 font=('Segoe UI', 12, 'bold'),
+                                 relief='flat',
+                                 pady=12,
+                                 padx=25,
+                                 cursor='hand2')
+        generate_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            type_label = ttk.Label(type_frame,
-                                   text="Chart Type:",
-                                   style='Subheading.TLabel')
-            type_label.pack(side=tk.LEFT, padx=(0, 20))
+        realtime_btn = tk.Button(button_frame,
+                                 text="🔄 Real-time Chart",
+                                 command=self.start_realtime_chart,
+                                 bg=self.colors['light_blue'],
+                                 fg=self.colors['dark_blue'],
+                                 font=('Segoe UI', 11),
+                                 relief='flat',
+                                 pady=10,
+                                 padx=20,
+                                 cursor='hand2')
+        realtime_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            self.chart_type = tk.StringVar(value="comprehensive")
-            chart_types = [
-                ("📊 Comprehensive Dashboard", "comprehensive"),
-                ("💰 Price Action Only", "price"),
-                ("📈 Technical Indicators", "technical"),
-                ("📊 Volume Analysis", "volume"),
-                ("💎 Smart Money Flow", "smart_money")
-            ]
+        export_btn = tk.Button(button_frame,
+                               text="💾 Export Charts",
+                               command=self.export_charts,
+                               bg=self.colors['medium_gray'],
+                               fg=self.colors['dark_blue'],
+                               font=('Segoe UI', 11),
+                               relief='flat',
+                               pady=10,
+                               padx=20,
+                               cursor='hand2')
+        export_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-            for text, value in chart_types:
-                rb = tk.Radiobutton(type_frame,
-                                    text=text,
-                                    variable=self.chart_type,
-                                    value=value,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                rb.pack(side=tk.LEFT, padx=(0, 15))
+        print_btn = tk.Button(button_frame,
+                              text="🖨️ Print Charts",
+                              command=self.print_charts,
+                              bg=self.colors['medium_gray'],
+                              fg=self.colors['dark_blue'],
+                              font=('Segoe UI', 11),
+                              relief='flat',
+                              pady=10,
+                              padx=20,
+                              cursor='hand2')
+        print_btn.pack(side=tk.LEFT)
 
-            # Chart generation buttons
-            button_frame = ttk.Frame(controls_card, style='Professional.TFrame')
-            button_frame.pack(fill=tk.X, pady=15)
+        # Chart customization
+        custom_card = self.create_card(content_frame, "🎨 Chart Customization")
 
-            generate_btn = tk.Button(button_frame,
-                                     text="📊 Generate Charts",
-                                     command=self.generate_charts,
-                                     bg=self.colors['primary_blue'],
-                                     fg='white',
-                                     font=('Segoe UI', 12, 'bold'),
-                                     relief='flat',
-                                     pady=12,
-                                     padx=25,
-                                     cursor='hand2')
-            generate_btn.pack(side=tk.LEFT, padx=(0, 15))
+        custom_row1 = ttk.Frame(custom_card, style='Professional.TFrame')
+        custom_row1.pack(fill=tk.X, pady=(0, 10))
 
-            realtime_btn = tk.Button(button_frame,
-                                     text="🔄 Real-time Chart",
-                                     command=self.start_realtime_chart,
-                                     bg=self.colors['light_blue'],
-                                     fg=self.colors['dark_blue'],
-                                     font=('Segoe UI', 11),
-                                     relief='flat',
-                                     pady=10,
-                                     padx=20,
-                                     cursor='hand2')
-            realtime_btn.pack(side=tk.LEFT, padx=(0, 15))
+        # Timeframe selection
+        timeframe_frame = ttk.Frame(custom_row1, style='Professional.TFrame')
+        timeframe_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-            export_btn = tk.Button(button_frame,
-                                   text="💾 Export Charts",
-                                   command=self.export_charts,
-                                   bg=self.colors['medium_gray'],
-                                   fg=self.colors['dark_blue'],
-                                   font=('Segoe UI', 11),
-                                   relief='flat',
-                                   pady=10,
-                                   padx=20,
-                                   cursor='hand2')
-            export_btn.pack(side=tk.LEFT, padx=(0, 15))
-
-            print_btn = tk.Button(button_frame,
-                                  text="🖨️ Print Charts",
-                                  command=self.print_charts,
-                                  bg=self.colors['medium_gray'],
-                                  fg=self.colors['dark_blue'],
-                                  font=('Segoe UI', 11),
-                                  relief='flat',
-                                  pady=10,
-                                  padx=20,
-                                  cursor='hand2')
-            print_btn.pack(side=tk.LEFT)
-
-            # Chart customization
-            custom_card = self.create_card(content_frame, "🎨 Chart Customization")
-
-            custom_row1 = ttk.Frame(custom_card, style='Professional.TFrame')
-            custom_row1.pack(fill=tk.X, pady=(0, 10))
-
-            # Timeframe selection
-            timeframe_frame = ttk.Frame(custom_row1, style='Professional.TFrame')
-            timeframe_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-            timeframe_label = ttk.Label(timeframe_frame,
-                                        text="Timeframe:",
-                                        style='Subheading.TLabel')
-            timeframe_label.pack(anchor=tk.W, pady=(0, 5))
-
-            self.timeframe = tk.StringVar(value="all")
-            timeframes = [("All Data", "all"), ("6 Months", "6m"), ("3 Months", "3m"), ("1 Month", "1m")]
-
-            tf_row = ttk.Frame(timeframe_frame, style='Professional.TFrame')
-            tf_row.pack(anchor=tk.W)
-
-            for text, value in timeframes:
-                rb = tk.Radiobutton(tf_row,
-                                    text=text,
-                                    variable=self.timeframe,
-                                    value=value,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                rb.pack(side=tk.LEFT, padx=(0, 15))
-
-            # Theme selection
-            theme_frame = ttk.Frame(custom_row1, style='Professional.TFrame')
-            theme_frame.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-
-            theme_label = ttk.Label(theme_frame,
-                                    text="Chart Theme:",
+        timeframe_label = ttk.Label(timeframe_frame,
+                                    text="Timeframe:",
                                     style='Subheading.TLabel')
-            theme_label.pack(anchor=tk.W, pady=(0, 5))
+        timeframe_label.pack(anchor=tk.W, pady=(0, 5))
 
-            self.chart_theme = tk.StringVar(value="plotly_white")
-            themes = [("🌞 Light", "plotly_white"), ("🌙 Dark", "plotly_dark"), ("💼 Professional", "seaborn")]
+        self.timeframe = tk.StringVar(value="all")
+        timeframes = [("All Data", "all"), ("6 Months", "6m"), ("3 Months", "3m"), ("1 Month", "1m")]
 
-            theme_row = ttk.Frame(theme_frame, style='Professional.TFrame')
-            theme_row.pack(anchor=tk.W)
+        tf_row = ttk.Frame(timeframe_frame, style='Professional.TFrame')
+        tf_row.pack(anchor=tk.W)
 
-            for text, value in themes:
-                rb = tk.Radiobutton(theme_row,
-                                    text=text,
-                                    variable=self.chart_theme,
-                                    value=value,
+        for text, value in timeframes:
+            rb = tk.Radiobutton(tf_row,
+                                text=text,
+                                variable=self.timeframe,
+                                value=value,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            rb.pack(side=tk.LEFT, padx=(0, 15))
+
+        # Theme selection
+        theme_frame = ttk.Frame(custom_row1, style='Professional.TFrame')
+        theme_frame.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+
+        theme_label = ttk.Label(theme_frame,
+                                text="Chart Theme:",
+                                style='Subheading.TLabel')
+        theme_label.pack(anchor=tk.W, pady=(0, 5))
+
+        self.chart_theme = tk.StringVar(value="plotly_white")
+        themes = [("🌞 Light", "plotly_white"), ("🌙 Dark", "plotly_dark"), ("💼 Professional", "seaborn")]
+
+        theme_row = ttk.Frame(theme_frame, style='Professional.TFrame')
+        theme_row.pack(anchor=tk.W)
+
+        for text, value in themes:
+            rb = tk.Radiobutton(theme_row,
+                                text=text,
+                                variable=self.chart_theme,
+                                value=value,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            rb.pack(side=tk.LEFT, padx=(0, 15))
+
+        # Chart display area
+        display_card = self.create_card(content_frame, "📊 Chart Display")
+
+        self.chart_status = tk.Label(display_card,
+                                     text="📊 Click 'Generate Charts' to create professional trading visualizations\n\n" +
+                                          "• Comprehensive dashboards with multiple indicators\n" +
+                                          "• Interactive zoom and pan capabilities\n" +
+                                          "• Professional color schemes and styling\n" +
+                                          "• Export options for presentations",
+                                     font=('Segoe UI', 12),
+                                     bg=self.colors['white'],
+                                     fg=self.colors['steel_blue'],
+                                     justify=tk.CENTER)
+        self.chart_status.pack(expand=True, pady=50)
+
+    def create_performance_tab(self):
+        """Create professional model performance analysis tab"""
+        perf_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        self.notebook.add(perf_frame, text="🏆 Model Performance")
+
+        # Main content
+        content_frame = ttk.Frame(perf_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+
+        title_label = ttk.Label(header_frame,
+                                text="Model Performance Analytics",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
+
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Comprehensive analysis of AI model accuracy, reliability, and performance metrics",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+
+        # Performance metrics card
+        metrics_card = self.create_card(content_frame, "📊 Performance Metrics")
+
+        # Create performance table
+        table_frame = ttk.Frame(metrics_card, style='Professional.TFrame')
+        table_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        columns = ('Model', 'Accuracy', 'R² Score', 'MAE', 'RMSE', 'Training Time', 'Status')
+        self.performance_tree = ttk.Treeview(table_frame,
+                                             columns=columns,
+                                             show='headings',
+                                             style='Professional.Treeview',
+                                             height=12)
+
+        # Configure columns
+        for col in columns:
+            self.performance_tree.heading(col, text=col, anchor=tk.CENTER)
+
+        # Set column widths
+        widths = {'Model': 150, 'Accuracy': 100, 'R² Score': 100, 'MAE': 80, 'RMSE': 80, 'Training Time': 120,
+                  'Status': 100}
+        for col in columns:
+            self.performance_tree.column(col, width=widths[col], anchor=tk.CENTER)
+
+        # Scrollbars
+        v_scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.performance_tree.yview)
+        h_scrollbar = ttk.Scrollbar(table_frame, orient="horizontal", command=self.performance_tree.xview)
+        self.performance_tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+
+        self.performance_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Performance analysis buttons
+        button_card = self.create_card(content_frame, "📈 Performance Analysis Tools")
+
+        button_row = ttk.Frame(button_card, style='Professional.TFrame')
+        button_row.pack(anchor=tk.CENTER, pady=10)
+
+        report_btn = tk.Button(button_row,
+                               text="📊 Generate Performance Report",
+                               command=self.generate_performance_report,
+                               bg=self.colors['primary_blue'],
+                               fg='white',
+                               font=('Segoe UI', 11, 'bold'),
+                               relief='flat',
+                               pady=12,
+                               padx=20,
+                               cursor='hand2')
+        report_btn.pack(side=tk.LEFT, padx=(0, 15))
+
+        chart_btn = tk.Button(button_row,
+                              text="📈 Model Comparison Chart",
+                              command=self.create_model_comparison_chart,
+                              bg=self.colors['light_blue'],
+                              fg=self.colors['dark_blue'],
+                              font=('Segoe UI', 11),
+                              relief='flat',
+                              pady=12,
+                              padx=20,
+                              cursor='hand2')
+        chart_btn.pack(side=tk.LEFT, padx=(0, 15))
+
+        export_btn = tk.Button(button_row,
+                               text="💾 Export Performance Data",
+                               command=self.export_performance_data,
+                               bg=self.colors['medium_gray'],
+                               fg=self.colors['dark_blue'],
+                               font=('Segoe UI', 11),
+                               relief='flat',
+                               pady=12,
+                               padx=20,
+                               cursor='hand2')
+        export_btn.pack(side=tk.LEFT)
+
+    def create_risk_tab(self):
+        """Create professional risk management tab"""
+        risk_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        self.notebook.add(risk_frame, text="⚠️ Risk Management")
+
+        # Main content
+        content_frame = ttk.Frame(risk_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+
+        title_label = ttk.Label(header_frame,
+                                text="Risk Management & Portfolio Analytics",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
+
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Comprehensive risk assessment tools for informed trading decisions",
+                                   style='Body.TLabel')
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+
+        # Two-column layout
+        columns_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        columns_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Left column - Risk metrics
+        left_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15))
+
+        metrics_card = self.create_card(left_column, "📊 Risk Metrics")
+
+        self.risk_display = tk.Text(metrics_card,
+                                    height=15,
                                     bg=self.colors['white'],
                                     fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                rb.pack(side=tk.LEFT, padx=(0, 15))
+                                    font=('Consolas', 10),
+                                    relief='solid',
+                                    bd=1,
+                                    wrap=tk.WORD,
+                                    padx=15,
+                                    pady=15)
 
-            # Chart display area
-            display_card = self.create_card(content_frame, "📊 Chart Display")
+        risk_scroll = ttk.Scrollbar(metrics_card, orient="vertical", command=self.risk_display.yview)
+        self.risk_display.configure(yscrollcommand=risk_scroll.set)
 
-            self.chart_status = tk.Label(display_card,
-                                         text="📊 Click 'Generate Charts' to create professional trading visualizations\n\n" +
-                                              "• Comprehensive dashboards with multiple indicators\n" +
-                                              "• Interactive zoom and pan capabilities\n" +
-                                              "• Professional color schemes and styling\n" +
-                                              "• Export options for presentations",
-                                         font=('Segoe UI', 12),
-                                         bg=self.colors['white'],
-                                         fg=self.colors['steel_blue'],
-                                         justify=tk.CENTER)
-            self.chart_status.pack(expand=True, pady=50)
+        self.risk_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        risk_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        def create_performance_tab(self):
-            """Create professional model performance analysis tab"""
-            perf_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
-            self.notebook.add(perf_frame, text="🏆 Model Performance")
+        # Right column - Risk controls
+        right_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(15, 0))
 
-            # Main content
-            content_frame = ttk.Frame(perf_frame, style='Professional.TFrame')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+        controls_card = self.create_card(right_column, "⚙️ Risk Parameters")
 
-            # Header
-            header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            header_frame.pack(fill=tk.X, pady=(0, 20))
+        # Risk tolerance
+        tolerance_frame = ttk.Frame(controls_card, style='Professional.TFrame')
+        tolerance_frame.pack(fill=tk.X, pady=(0, 20))
 
-            title_label = ttk.Label(header_frame,
-                                    text="Model Performance Analytics",
-                                    style='Title.TLabel')
-            title_label.pack(anchor=tk.W)
+        tolerance_label = ttk.Label(tolerance_frame,
+                                    text="Risk Tolerance:",
+                                    style='Subheading.TLabel')
+        tolerance_label.pack(anchor=tk.W, pady=(0, 10))
 
-            subtitle_label = ttk.Label(header_frame,
-                                       text="Comprehensive analysis of AI model accuracy, reliability, and performance metrics",
-                                       style='Body.TLabel')
-            subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+        self.risk_tolerance = tk.StringVar(value="moderate")
+        risk_levels = [("🛡️ Conservative", "conservative"), ("⚖️ Moderate", "moderate"),
+                       ("🚀 Aggressive", "aggressive")]
 
-            # Performance metrics card
-            metrics_card = self.create_card(content_frame, "📊 Performance Metrics")
+        for text, value in risk_levels:
+            rb = tk.Radiobutton(tolerance_frame,
+                                text=text,
+                                variable=self.risk_tolerance,
+                                value=value,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 11),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            rb.pack(anchor=tk.W, pady=3)
 
-            # Create performance table
-            table_frame = ttk.Frame(metrics_card, style='Professional.TFrame')
-            table_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        # Position sizing
+        position_frame = ttk.Frame(controls_card, style='Professional.TFrame')
+        position_frame.pack(fill=tk.X, pady=(0, 20))
 
-            columns = ('Model', 'Accuracy', 'R² Score', 'MAE', 'RMSE', 'Training Time', 'Status')
-            self.performance_tree = ttk.Treeview(table_frame,
-                                                 columns=columns,
-                                                 show='headings',
-                                                 style='Professional.Treeview',
-                                                 height=12)
-
-            # Configure columns
-            for col in columns:
-                self.performance_tree.heading(col, text=col, anchor=tk.CENTER)
-
-            # Set column widths
-            widths = {'Model': 150, 'Accuracy': 100, 'R² Score': 100, 'MAE': 80, 'RMSE': 80, 'Training Time': 120,
-                      'Status': 100}
-            for col in columns:
-                self.performance_tree.column(col, width=widths[col], anchor=tk.CENTER)
-
-            # Scrollbars
-            v_scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.performance_tree.yview)
-            h_scrollbar = ttk.Scrollbar(table_frame, orient="horizontal", command=self.performance_tree.xview)
-            self.performance_tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-
-            self.performance_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-
-            # Performance analysis buttons
-            button_card = self.create_card(content_frame, "📈 Performance Analysis Tools")
-
-            button_row = ttk.Frame(button_card, style='Professional.TFrame')
-            button_row.pack(anchor=tk.CENTER, pady=10)
-
-            report_btn = tk.Button(button_row,
-                                   text="📊 Generate Performance Report",
-                                   command=self.generate_performance_report,
-                                   bg=self.colors['primary_blue'],
-                                   fg='white',
-                                   font=('Segoe UI', 11, 'bold'),
-                                   relief='flat',
-                                   pady=12,
-                                   padx=20,
-                                   cursor='hand2')
-            report_btn.pack(side=tk.LEFT, padx=(0, 15))
-
-            chart_btn = tk.Button(button_row,
-                                  text="📈 Model Comparison Chart",
-                                  command=self.create_model_comparison_chart,
-                                  bg=self.colors['light_blue'],
-                                  fg=self.colors['dark_blue'],
-                                  font=('Segoe UI', 11),
-                                  relief='flat',
-                                  pady=12,
-                                  padx=20,
-                                  cursor='hand2')
-            chart_btn.pack(side=tk.LEFT, padx=(0, 15))
-
-            export_btn = tk.Button(button_row,
-                                   text="💾 Export Performance Data",
-                                   command=self.export_performance_data,
-                                   bg=self.colors['medium_gray'],
-                                   fg=self.colors['dark_blue'],
-                                   font=('Segoe UI', 11),
-                                   relief='flat',
-                                   pady=12,
-                                   padx=20,
-                                   cursor='hand2')
-            export_btn.pack(side=tk.LEFT)
-
-        def create_risk_tab(self):
-            """Create professional risk management tab"""
-            risk_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
-            self.notebook.add(risk_frame, text="⚠️ Risk Management")
-
-            # Main content
-            content_frame = ttk.Frame(risk_frame, style='Professional.TFrame')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
-
-            # Header
-            header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            header_frame.pack(fill=tk.X, pady=(0, 20))
-
-            title_label = ttk.Label(header_frame,
-                                    text="Risk Management & Portfolio Analytics",
-                                    style='Title.TLabel')
-            title_label.pack(anchor=tk.W)
-
-            subtitle_label = ttk.Label(header_frame,
-                                       text="Comprehensive risk assessment tools for informed trading decisions",
-                                       style='Body.TLabel')
-            subtitle_label.pack(anchor=tk.W, pady=(5, 0))
-
-            # Two-column layout
-            columns_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            columns_frame.pack(fill=tk.BOTH, expand=True)
-
-            # Left column - Risk metrics
-            left_column = ttk.Frame(columns_frame, style='Professional.TFrame')
-            left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15))
-
-            metrics_card = self.create_card(left_column, "📊 Risk Metrics")
-
-            self.risk_display = tk.Text(metrics_card,
-                                        height=15,
-                                        bg=self.colors['white'],
-                                        fg=self.colors['dark_blue'],
-                                        font=('Consolas', 10),
-                                        relief='solid',
-                                        bd=1,
-                                        wrap=tk.WORD,
-                                        padx=15,
-                                        pady=15)
-
-            risk_scroll = ttk.Scrollbar(metrics_card, orient="vertical", command=self.risk_display.yview)
-            self.risk_display.configure(yscrollcommand=risk_scroll.set)
-
-            self.risk_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            risk_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-            # Right column - Risk controls
-            right_column = ttk.Frame(columns_frame, style='Professional.TFrame')
-            right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(15, 0))
-
-            controls_card = self.create_card(right_column, "⚙️ Risk Parameters")
-
-            # Risk tolerance
-            tolerance_frame = ttk.Frame(controls_card, style='Professional.TFrame')
-            tolerance_frame.pack(fill=tk.X, pady=(0, 20))
-
-            tolerance_label = ttk.Label(tolerance_frame,
-                                        text="Risk Tolerance:",
-                                        style='Subheading.TLabel')
-            tolerance_label.pack(anchor=tk.W, pady=(0, 10))
-
-            self.risk_tolerance = tk.StringVar(value="moderate")
-            risk_levels = [("🛡️ Conservative", "conservative"), ("⚖️ Moderate", "moderate"),
-                           ("🚀 Aggressive", "aggressive")]
-
-            for text, value in risk_levels:
-                rb = tk.Radiobutton(tolerance_frame,
-                                    text=text,
-                                    variable=self.risk_tolerance,
-                                    value=value,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 11),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                rb.pack(anchor=tk.W, pady=3)
-
-            # Position sizing
-            position_frame = ttk.Frame(controls_card, style='Professional.TFrame')
-            position_frame.pack(fill=tk.X, pady=(0, 20))
-
-            position_label = ttk.Label(position_frame,
-                                       text="Position Size (% of portfolio):",
-                                       style='Subheading.TLabel')
-            position_label.pack(anchor=tk.W, pady=(0, 5))
-
-            self.position_size = tk.DoubleVar(value=5.0)
-            position_scale = tk.Scale(position_frame,
-                                      from_=1.0, to=20.0,
-                                      variable=self.position_size,
-                                      orient=tk.HORIZONTAL,
-                                      resolution=0.5,
-                                      bg=self.colors['white'],
-                                      fg=self.colors['dark_blue'],
-                                      highlightthickness=0,
-                                      troughcolor=self.colors['light_gray'],
-                                      activebackground=self.colors['primary_blue'])
-            position_scale.pack(fill=tk.X, pady=5)
-
-            position_value = tk.Label(position_frame,
-                                      text="5.0%",
-                                      bg=self.colors['white'],
-                                      fg=self.colors['dark_blue'],
-                                      font=('Segoe UI', 10))
-            position_value.pack(anchor=tk.W)
-
-            # Stop loss
-            stop_frame = ttk.Frame(controls_card, style='Professional.TFrame')
-            stop_frame.pack(fill=tk.X, pady=(0, 20))
-
-            stop_label = ttk.Label(stop_frame,
-                                   text="Stop Loss (%):",
+        position_label = ttk.Label(position_frame,
+                                   text="Position Size (% of portfolio):",
                                    style='Subheading.TLabel')
-            stop_label.pack(anchor=tk.W, pady=(0, 5))
+        position_label.pack(anchor=tk.W, pady=(0, 5))
 
-            self.stop_loss = tk.DoubleVar(value=5.0)
-            stop_scale = tk.Scale(stop_frame,
-                                  from_=1.0, to=15.0,
-                                  variable=self.stop_loss,
+        self.position_size = tk.DoubleVar(value=5.0)
+        position_scale = tk.Scale(position_frame,
+                                  from_=1.0, to=20.0,
+                                  variable=self.position_size,
                                   orient=tk.HORIZONTAL,
                                   resolution=0.5,
                                   bg=self.colors['white'],
@@ -3651,390 +4205,419 @@ class ProfessionalSmartStockAIApp:
                                   highlightthickness=0,
                                   troughcolor=self.colors['light_gray'],
                                   activebackground=self.colors['primary_blue'])
-            stop_scale.pack(fill=tk.X, pady=5)
+        position_scale.pack(fill=tk.X, pady=5)
 
-            stop_value = tk.Label(stop_frame,
+        position_value = tk.Label(position_frame,
                                   text="5.0%",
                                   bg=self.colors['white'],
                                   fg=self.colors['dark_blue'],
                                   font=('Segoe UI', 10))
-            stop_value.pack(anchor=tk.W)
+        position_value.pack(anchor=tk.W)
 
-            # Risk calculation button
-            calc_button_frame = ttk.Frame(controls_card, style='Professional.TFrame')
-            calc_button_frame.pack(fill=tk.X, pady=20)
+        # Stop loss
+        stop_frame = ttk.Frame(controls_card, style='Professional.TFrame')
+        stop_frame.pack(fill=tk.X, pady=(0, 20))
 
-            calc_btn = tk.Button(calc_button_frame,
-                                 text="📊 Calculate Risk Metrics",
-                                 command=self.calculate_risk_metrics,
-                                 bg=self.colors['primary_blue'],
-                                 fg='white',
-                                 font=('Segoe UI', 12, 'bold'),
-                                 relief='flat',
-                                 pady=15,
-                                 padx=30,
-                                 cursor='hand2')
-            calc_btn.pack(anchor=tk.CENTER)
+        stop_label = ttk.Label(stop_frame,
+                               text="Stop Loss (%):",
+                               style='Subheading.TLabel')
+        stop_label.pack(anchor=tk.W, pady=(0, 5))
 
-        def create_settings_tab(self):
-            """Create professional settings tab"""
-            settings_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
-            self.notebook.add(settings_frame, text="⚙️ Settings")
+        self.stop_loss = tk.DoubleVar(value=5.0)
+        stop_scale = tk.Scale(stop_frame,
+                              from_=1.0, to=15.0,
+                              variable=self.stop_loss,
+                              orient=tk.HORIZONTAL,
+                              resolution=0.5,
+                              bg=self.colors['white'],
+                              fg=self.colors['dark_blue'],
+                              highlightthickness=0,
+                              troughcolor=self.colors['light_gray'],
+                              activebackground=self.colors['primary_blue'])
+        stop_scale.pack(fill=tk.X, pady=5)
 
-            # Scrollable frame setup
-            canvas = tk.Canvas(settings_frame, bg=self.colors['white'])
-            scrollbar = ttk.Scrollbar(settings_frame, orient="vertical", command=canvas.yview)
-            scrollable_frame = ttk.Frame(canvas, style='Professional.TFrame')
+        stop_value = tk.Label(stop_frame,
+                              text="5.0%",
+                              bg=self.colors['white'],
+                              fg=self.colors['dark_blue'],
+                              font=('Segoe UI', 10))
+        stop_value.pack(anchor=tk.W)
 
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-            )
+        # Risk calculation button
+        calc_button_frame = ttk.Frame(controls_card, style='Professional.TFrame')
+        calc_button_frame.pack(fill=tk.X, pady=20)
 
-            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-            canvas.configure(yscrollcommand=scrollbar.set)
+        calc_btn = tk.Button(calc_button_frame,
+                             text="📊 Calculate Risk Metrics",
+                             command=self.calculate_risk_metrics,
+                             bg=self.colors['primary_blue'],
+                             fg='white',
+                             font=('Segoe UI', 12, 'bold'),
+                             relief='flat',
+                             pady=15,
+                             padx=30,
+                             cursor='hand2')
+        calc_btn.pack(anchor=tk.CENTER)
 
-            # Main content
-            content_frame = ttk.Frame(scrollable_frame, style='Professional.TFrame')
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+    def create_settings_tab(self):
+        """Create professional settings tab"""
+        settings_frame = ttk.Frame(self.notebook, style='Professional.TFrame')
+        self.notebook.add(settings_frame, text="⚙️ Settings")
 
-            # Header
-            header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            header_frame.pack(fill=tk.X, pady=(0, 30))
+        # Scrollable frame setup
+        canvas = tk.Canvas(settings_frame, bg=self.colors['white'])
+        scrollbar = ttk.Scrollbar(settings_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas, style='Professional.TFrame')
 
-            title_label = ttk.Label(header_frame,
-                                    text="Application Settings",
-                                    style='Title.TLabel')
-            title_label.pack(anchor=tk.W)
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
 
-            subtitle_label = ttk.Label(header_frame,
-                                       text="Customize the application appearance, performance, and behavior",
-                                       style='Body.TLabel')
-            subtitle_label.pack(anchor=tk.W, pady=(5, 0))
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-            # Create settings cards in two columns
-            columns_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            columns_frame.pack(fill=tk.BOTH, expand=True)
+        # Main content
+        content_frame = ttk.Frame(scrollable_frame, style='Professional.TFrame')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
 
-            # Left column
-            left_column = ttk.Frame(columns_frame, style='Professional.TFrame')
-            left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15))
+        # Header
+        header_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 30))
 
-            # Appearance settings
-            appearance_card = self.create_card(left_column, "🎨 Appearance")
+        title_label = ttk.Label(header_frame,
+                                text="Application Settings",
+                                style='Title.TLabel')
+        title_label.pack(anchor=tk.W)
 
-            # Theme selection
-            theme_label = ttk.Label(appearance_card,
-                                    text="Application Theme:",
-                                    style='Subheading.TLabel')
-            theme_label.pack(anchor=tk.W, pady=(0, 10))
-
-            self.theme_var = tk.StringVar(value="Professional Light")
-
-            theme_options = [
-                ("🌞 Professional Light (Current)", "Professional Light"),
-                ("🌙 Professional Dark", "Professional Dark"),
-                ("🎨 Custom Theme", "Custom")
-            ]
-
-            for text, value in theme_options:
-                rb = tk.Radiobutton(appearance_card,
-                                    text=text,
-                                    variable=self.theme_var,
-                                    value=value,
-                                    bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'],
-                                    font=('Segoe UI', 10),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-                rb.pack(anchor=tk.W, pady=3)
-
-            # Font size
-            font_frame = ttk.Frame(appearance_card, style='Professional.TFrame')
-            font_frame.pack(fill=tk.X, pady=(20, 0))
-
-            font_label = ttk.Label(font_frame,
-                                   text="Font Size Scale:",
+        subtitle_label = ttk.Label(header_frame,
+                                   text="Customize the application appearance, performance, and behavior",
                                    style='Body.TLabel')
-            font_label.pack(anchor=tk.W)
+        subtitle_label.pack(anchor=tk.W, pady=(5, 0))
 
-            self.font_scale = tk.DoubleVar(value=1.0)
-            font_scale_widget = tk.Scale(font_frame,
-                                         from_=0.8, to=1.5,
-                                         variable=self.font_scale,
-                                         orient=tk.HORIZONTAL,
-                                         resolution=0.1,
-                                         bg=self.colors['white'],
-                                         fg=self.colors['dark_blue'],
-                                         highlightthickness=0,
-                                         troughcolor=self.colors['light_gray'],
-                                         activebackground=self.colors['primary_blue'])
-            font_scale_widget.pack(fill=tk.X, pady=5)
+        # Create settings cards in two columns
+        columns_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        columns_frame.pack(fill=tk.BOTH, expand=True)
 
-            # Auto-save settings
-            autosave_card = self.create_card(left_column, "💾 Auto-save")
+        # Left column
+        left_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15))
 
-            self.auto_save_enabled = tk.BooleanVar(value=True)
-            autosave_cb = tk.Checkbutton(autosave_card,
-                                         text="Enable auto-save",
-                                         variable=self.auto_save_enabled,
-                                         bg=self.colors['white'],
-                                         fg=self.colors['dark_blue'],
-                                         font=('Segoe UI', 11),
-                                         selectcolor=self.colors['primary_blue'],
-                                         activebackground=self.colors['white'])
-            autosave_cb.pack(anchor=tk.W, pady=(0, 10))
+        # Appearance settings
+        appearance_card = self.create_card(left_column, "🎨 Appearance")
 
-            interval_label = ttk.Label(autosave_card,
-                                       text="Auto-save interval (minutes):",
-                                       style='Body.TLabel')
-            interval_label.pack(anchor=tk.W, pady=(10, 0))
+        # Theme selection
+        theme_label = ttk.Label(appearance_card,
+                                text="Application Theme:",
+                                style='Subheading.TLabel')
+        theme_label.pack(anchor=tk.W, pady=(0, 10))
 
-            self.auto_save_interval = tk.IntVar(value=5)
-            interval_scale = tk.Scale(autosave_card,
-                                      from_=1, to=30,
-                                      variable=self.auto_save_interval,
-                                      orient=tk.HORIZONTAL,
-                                      bg=self.colors['white'],
-                                      fg=self.colors['dark_blue'],
-                                      highlightthickness=0,
-                                      troughcolor=self.colors['light_gray'],
-                                      activebackground=self.colors['primary_blue'])
-            interval_scale.pack(fill=tk.X, pady=5)
+        self.theme_var = tk.StringVar(value="Professional Light")
 
-            # Right column
-            right_column = ttk.Frame(columns_frame, style='Professional.TFrame')
-            right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(15, 0))
+        theme_options = [
+            ("🌞 Professional Light (Current)", "Professional Light"),
+            ("🌙 Professional Dark", "Professional Dark"),
+            ("🎨 Custom Theme", "Custom")
+        ]
 
-            # Performance settings
-            performance_card = self.create_card(right_column, "⚡ Performance")
+        for text, value in theme_options:
+            rb = tk.Radiobutton(appearance_card,
+                                text=text,
+                                variable=self.theme_var,
+                                value=value,
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'],
+                                font=('Segoe UI', 10),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+            rb.pack(anchor=tk.W, pady=3)
 
-            self.parallel_processing = tk.BooleanVar(value=True)
-            parallel_cb = tk.Checkbutton(performance_card,
-                                         text="Enable parallel processing",
-                                         variable=self.parallel_processing,
-                                         bg=self.colors['white'],
-                                         fg=self.colors['dark_blue'],
-                                         font=('Segoe UI', 11),
-                                         selectcolor=self.colors['primary_blue'],
-                                         activebackground=self.colors['white'])
-            parallel_cb.pack(anchor=tk.W, pady=(0, 10))
+        # Font size
+        font_frame = ttk.Frame(appearance_card, style='Professional.TFrame')
+        font_frame.pack(fill=tk.X, pady=(20, 0))
 
-            cores_label = ttk.Label(performance_card,
-                                    text="CPU cores to use:",
-                                    style='Body.TLabel')
-            cores_label.pack(anchor=tk.W, pady=(10, 0))
+        font_label = ttk.Label(font_frame,
+                               text="Font Size Scale:",
+                               style='Body.TLabel')
+        font_label.pack(anchor=tk.W)
 
-            self.cpu_cores = tk.IntVar(value=max(1, os.cpu_count() // 2))
-            cores_scale = tk.Scale(performance_card,
-                                   from_=1, to=os.cpu_count(),
-                                   variable=self.cpu_cores,
-                                   orient=tk.HORIZONTAL,
+        self.font_scale = tk.DoubleVar(value=1.0)
+        font_scale_widget = tk.Scale(font_frame,
+                                     from_=0.8, to=1.5,
+                                     variable=self.font_scale,
+                                     orient=tk.HORIZONTAL,
+                                     resolution=0.1,
+                                     bg=self.colors['white'],
+                                     fg=self.colors['dark_blue'],
+                                     highlightthickness=0,
+                                     troughcolor=self.colors['light_gray'],
+                                     activebackground=self.colors['primary_blue'])
+        font_scale_widget.pack(fill=tk.X, pady=5)
+
+        # Auto-save settings
+        autosave_card = self.create_card(left_column, "💾 Auto-save")
+
+        self.auto_save_enabled = tk.BooleanVar(value=True)
+        autosave_cb = tk.Checkbutton(autosave_card,
+                                     text="Enable auto-save",
+                                     variable=self.auto_save_enabled,
+                                     bg=self.colors['white'],
+                                     fg=self.colors['dark_blue'],
+                                     font=('Segoe UI', 11),
+                                     selectcolor=self.colors['primary_blue'],
+                                     activebackground=self.colors['white'])
+        autosave_cb.pack(anchor=tk.W, pady=(0, 10))
+
+        interval_label = ttk.Label(autosave_card,
+                                   text="Auto-save interval (minutes):",
+                                   style='Body.TLabel')
+        interval_label.pack(anchor=tk.W, pady=(10, 0))
+
+        self.auto_save_interval = tk.IntVar(value=5)
+        interval_scale = tk.Scale(autosave_card,
+                                  from_=1, to=30,
+                                  variable=self.auto_save_interval,
+                                  orient=tk.HORIZONTAL,
+                                  bg=self.colors['white'],
+                                  fg=self.colors['dark_blue'],
+                                  highlightthickness=0,
+                                  troughcolor=self.colors['light_gray'],
+                                  activebackground=self.colors['primary_blue'])
+        interval_scale.pack(fill=tk.X, pady=5)
+
+        # Right column
+        right_column = ttk.Frame(columns_frame, style='Professional.TFrame')
+        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(15, 0))
+
+        # Performance settings
+        performance_card = self.create_card(right_column, "⚡ Performance")
+
+        self.parallel_processing = tk.BooleanVar(value=True)
+        parallel_cb = tk.Checkbutton(performance_card,
+                                     text="Enable parallel processing",
+                                     variable=self.parallel_processing,
+                                     bg=self.colors['white'],
+                                     fg=self.colors['dark_blue'],
+                                     font=('Segoe UI', 11),
+                                     selectcolor=self.colors['primary_blue'],
+                                     activebackground=self.colors['white'])
+        parallel_cb.pack(anchor=tk.W, pady=(0, 10))
+
+        cores_label = ttk.Label(performance_card,
+                                text="CPU cores to use:",
+                                style='Body.TLabel')
+        cores_label.pack(anchor=tk.W, pady=(10, 0))
+
+        self.cpu_cores = tk.IntVar(value=max(1, os.cpu_count() // 2))
+        cores_scale = tk.Scale(performance_card,
+                               from_=1, to=os.cpu_count(),
+                               variable=self.cpu_cores,
+                               orient=tk.HORIZONTAL,
+                               bg=self.colors['white'],
+                               fg=self.colors['dark_blue'],
+                               highlightthickness=0,
+                               troughcolor=self.colors['light_gray'],
+                               activebackground=self.colors['primary_blue'])
+        cores_scale.pack(fill=tk.X, pady=5)
+
+        self.gpu_acceleration = tk.BooleanVar(value=DEEP_LEARNING_AVAILABLE)
+        gpu_cb = tk.Checkbutton(performance_card,
+                                text="Enable GPU acceleration (TensorFlow)",
+                                variable=self.gpu_acceleration,
+                                state='normal' if DEEP_LEARNING_AVAILABLE else 'disabled',
+                                bg=self.colors['white'],
+                                fg=self.colors['dark_blue'] if DEEP_LEARNING_AVAILABLE else self.colors[
+                                    'medium_gray'],
+                                font=('Segoe UI', 11),
+                                selectcolor=self.colors['primary_blue'],
+                                activebackground=self.colors['white'])
+        gpu_cb.pack(anchor=tk.W, pady=(20, 0))
+
+        # Memory management
+        memory_label = ttk.Label(performance_card,
+                                 text="Memory Management:",
+                                 style='Subheading.TLabel')
+        memory_label.pack(anchor=tk.W, pady=(20, 10))
+
+        self.memory_optimization = tk.BooleanVar(value=True)
+        memory_cb = tk.Checkbutton(performance_card,
+                                   text="Enable memory optimization",
+                                   variable=self.memory_optimization,
                                    bg=self.colors['white'],
                                    fg=self.colors['dark_blue'],
-                                   highlightthickness=0,
-                                   troughcolor=self.colors['light_gray'],
-                                   activebackground=self.colors['primary_blue'])
-            cores_scale.pack(fill=tk.X, pady=5)
+                                   font=('Segoe UI', 10),
+                                   selectcolor=self.colors['primary_blue'],
+                                   activebackground=self.colors['white'])
+        memory_cb.pack(anchor=tk.W)
 
-            self.gpu_acceleration = tk.BooleanVar(value=DEEP_LEARNING_AVAILABLE)
-            gpu_cb = tk.Checkbutton(performance_card,
-                                    text="Enable GPU acceleration (TensorFlow)",
-                                    variable=self.gpu_acceleration,
-                                    state='normal' if DEEP_LEARNING_AVAILABLE else 'disabled',
+        # Data settings
+        data_card = self.create_card(right_column, "📊 Data Processing")
+
+        self.enable_caching = tk.BooleanVar(value=True)
+        cache_cb = tk.Checkbutton(data_card,
+                                  text="Enable data caching",
+                                  variable=self.enable_caching,
+                                  bg=self.colors['white'],
+                                  fg=self.colors['dark_blue'],
+                                  font=('Segoe UI', 11),
+                                  selectcolor=self.colors['primary_blue'],
+                                  activebackground=self.colors['white'])
+        cache_cb.pack(anchor=tk.W, pady=(0, 10))
+
+        cache_size_label = ttk.Label(data_card,
+                                     text="Cache size (MB):",
+                                     style='Body.TLabel')
+        cache_size_label.pack(anchor=tk.W, pady=(10, 0))
+
+        self.cache_size = tk.IntVar(value=500)
+        cache_size_scale = tk.Scale(data_card,
+                                    from_=100, to=2000,
+                                    variable=self.cache_size,
+                                    orient=tk.HORIZONTAL,
                                     bg=self.colors['white'],
-                                    fg=self.colors['dark_blue'] if DEEP_LEARNING_AVAILABLE else self.colors[
-                                        'medium_gray'],
-                                    font=('Segoe UI', 11),
-                                    selectcolor=self.colors['primary_blue'],
-                                    activebackground=self.colors['white'])
-            gpu_cb.pack(anchor=tk.W, pady=(20, 0))
+                                    fg=self.colors['dark_blue'],
+                                    highlightthickness=0,
+                                    troughcolor=self.colors['light_gray'],
+                                    activebackground=self.colors['primary_blue'])
+        cache_size_scale.pack(fill=tk.X, pady=5)
 
-            # Memory management
-            memory_label = ttk.Label(performance_card,
-                                     text="Memory Management:",
-                                     style='Subheading.TLabel')
-            memory_label.pack(anchor=tk.W, pady=(20, 10))
+        # Apply settings button
+        apply_frame = ttk.Frame(content_frame, style='Professional.TFrame')
+        apply_frame.pack(fill=tk.X, pady=30)
 
-            self.memory_optimization = tk.BooleanVar(value=True)
-            memory_cb = tk.Checkbutton(performance_card,
-                                       text="Enable memory optimization",
-                                       variable=self.memory_optimization,
-                                       bg=self.colors['white'],
-                                       fg=self.colors['dark_blue'],
-                                       font=('Segoe UI', 10),
-                                       selectcolor=self.colors['primary_blue'],
-                                       activebackground=self.colors['white'])
-            memory_cb.pack(anchor=tk.W)
+        apply_btn = tk.Button(apply_frame,
+                              text="💾 Apply Settings",
+                              command=self.apply_settings,
+                              bg=self.colors['success_green'],
+                              fg='white',
+                              font=('Segoe UI', 12, 'bold'),
+                              relief='flat',
+                              pady=15,
+                              padx=40,
+                              cursor='hand2')
+        apply_btn.pack(anchor=tk.CENTER)
 
-            # Data settings
-            data_card = self.create_card(right_column, "📊 Data Processing")
+        # Pack scrollable components
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-            self.enable_caching = tk.BooleanVar(value=True)
-            cache_cb = tk.Checkbutton(data_card,
-                                      text="Enable data caching",
-                                      variable=self.enable_caching,
-                                      bg=self.colors['white'],
-                                      fg=self.colors['dark_blue'],
-                                      font=('Segoe UI', 11),
-                                      selectcolor=self.colors['primary_blue'],
-                                      activebackground=self.colors['white'])
-            cache_cb.pack(anchor=tk.W, pady=(0, 10))
+    def apply_professional_theme(self):
+        """Apply professional theme to all widgets"""
+        # Configure text widget colors
+        text_config = {
+            'bg': self.colors['white'],
+            'fg': self.colors['dark_blue'],
+            'insertbackground': self.colors['primary_blue'],
+            'selectbackground': self.colors['light_blue'],
+            'selectforeground': self.colors['dark_blue']
+        }
 
-            cache_size_label = ttk.Label(data_card,
-                                         text="Cache size (MB):",
-                                         style='Body.TLabel')
-            cache_size_label.pack(anchor=tk.W, pady=(10, 0))
+        # Apply to all text widgets when they exist
+        for widget_name in ['file_info_text', 'stats_text', 'progress_text',
+                            'predictions_text', 'detailed_predictions', 'risk_text', 'risk_display']:
+            if hasattr(self, widget_name):
+                widget = getattr(self, widget_name)
+                widget.configure(**text_config)
 
-            self.cache_size = tk.IntVar(value=500)
-            cache_size_scale = tk.Scale(data_card,
-                                        from_=100, to=2000,
-                                        variable=self.cache_size,
-                                        orient=tk.HORIZONTAL,
-                                        bg=self.colors['white'],
-                                        fg=self.colors['dark_blue'],
-                                        highlightthickness=0,
-                                        troughcolor=self.colors['light_gray'],
-                                        activebackground=self.colors['primary_blue'])
-            cache_size_scale.pack(fill=tk.X, pady=5)
+        # Navigation methods
 
-            # Apply settings button
-            apply_frame = ttk.Frame(content_frame, style='Professional.TFrame')
-            apply_frame.pack(fill=tk.X, pady=30)
+    def show_upload_tab(self):
+        """Show upload tab and highlight nav button"""
+        self.notebook.select(0)
+        self.highlight_nav_button('upload')
 
-            apply_btn = tk.Button(apply_frame,
-                                  text="💾 Apply Settings",
-                                  command=self.apply_settings,
-                                  bg=self.colors['success_green'],
-                                  fg='white',
-                                  font=('Segoe UI', 12, 'bold'),
-                                  relief='flat',
-                                  pady=15,
-                                  padx=40,
-                                  cursor='hand2')
-            apply_btn.pack(anchor=tk.CENTER)
+    def show_analysis_tab(self):
+        """Show analysis tab and highlight nav button"""
+        self.notebook.select(1)
+        self.highlight_nav_button('analysis')
 
-            # Pack scrollable components
-            canvas.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
+    def show_predictions_tab(self):
+        """Show predictions tab and highlight nav button"""
+        self.notebook.select(2)
+        self.highlight_nav_button('predictions')
 
-        def apply_professional_theme(self):
-            """Apply professional theme to all widgets"""
-            # Configure text widget colors
-            text_config = {
-                'bg': self.colors['white'],
-                'fg': self.colors['dark_blue'],
-                'insertbackground': self.colors['primary_blue'],
-                'selectbackground': self.colors['light_blue'],
-                'selectforeground': self.colors['dark_blue']
-            }
+    def show_charts_tab(self):
+        """Show charts tab and highlight nav button"""
+        self.notebook.select(3)
+        self.highlight_nav_button('charts')
 
-            # Apply to all text widgets when they exist
-            for widget_name in ['file_info_text', 'stats_text', 'progress_text',
-                                'predictions_text', 'detailed_predictions', 'risk_text', 'risk_display']:
-                if hasattr(self, widget_name):
-                    widget = getattr(self, widget_name)
-                    widget.configure(**text_config)
+    def show_performance_tab(self):
+        """Show performance tab and highlight nav button"""
+        self.notebook.select(4)
+        self.highlight_nav_button('performance')
 
-            # Navigation methods
+    def show_risk_tab(self):
+        """Show risk tab and highlight nav button"""
+        self.notebook.select(5)
+        self.highlight_nav_button('risk')
 
-        def show_upload_tab(self):
-            """Show upload tab and highlight nav button"""
-            self.notebook.select(0)
-            self.highlight_nav_button('upload')
+    def show_settings_tab(self):
+        """Show settings tab and highlight nav button"""
+        self.notebook.select(6)
+        self.highlight_nav_button('settings')
 
-        def show_analysis_tab(self):
-            """Show analysis tab and highlight nav button"""
-            self.notebook.select(1)
-            self.highlight_nav_button('analysis')
+    def highlight_nav_button(self, active_key):
+        """Highlight the active navigation button"""
+        for key, button in self.nav_buttons.items():
+            if key == active_key:
+                button.config(bg=self.colors['primary_blue'], fg='white')
+            else:
+                button.config(bg=self.colors['light_gray'], fg=self.colors['dark_blue'])
 
-        def show_predictions_tab(self):
-            """Show predictions tab and highlight nav button"""
-            self.notebook.select(2)
-            self.highlight_nav_button('predictions')
+    def on_tab_changed(self, event):
+        """Handle tab change event"""
+        selection = event.widget.select()
+        tab_text = event.widget.tab(selection, "text")
 
-        def show_charts_tab(self):
-            """Show charts tab and highlight nav button"""
-            self.notebook.select(3)
-            self.highlight_nav_button('charts')
+        # Map tab text to nav button keys
+        tab_mapping = {
+            "📁 Data Upload": "upload",
+            "⚙️ Analysis Setup": "analysis",
+            "📈 Smart Predictions": "predictions",
+            "📊 Professional Charts": "charts",
+            "🏆 Model Performance": "performance",
+            "⚠️ Risk Management": "risk",
+            "⚙️ Settings": "settings"
+        }
 
-        def show_performance_tab(self):
-            """Show performance tab and highlight nav button"""
-            self.notebook.select(4)
-            self.highlight_nav_button('performance')
+        if tab_text in tab_mapping:
+            self.highlight_nav_button(tab_mapping[tab_text])
 
-        def show_risk_tab(self):
-            """Show risk tab and highlight nav button"""
-            self.notebook.select(5)
-            self.highlight_nav_button('risk')
+        # Implementation of all GUI methods with professional styling...
 
-        def show_settings_tab(self):
-            """Show settings tab and highlight nav button"""
-            self.notebook.select(6)
-            self.highlight_nav_button('settings')
+    def upload_csv_file(self, event=None):
+        """Handle CSV file upload with enhanced validation"""
+        file_path = filedialog.askopenfilename(
+            title="Select Stock Data CSV File",
+            filetypes=[
+                ("CSV files", "*.csv"),
+                ("Excel files", "*.xlsx"),
+                ("All files", "*.*")
+            ],
+            initialdir=os.getcwd()
+        )
 
-        def highlight_nav_button(self, active_key):
-            """Highlight the active navigation button"""
-            for key, button in self.nav_buttons.items():
-                if key == active_key:
-                    button.config(bg=self.colors['primary_blue'], fg='white')
-                else:
-                    button.config(bg=self.colors['light_gray'], fg=self.colors['dark_blue'])
+        if file_path:
+            self.csv_file_path = file_path
+            self.ai_agent.csv_file_path = file_path
+            self.validate_and_display_file(file_path)
+            self.update_status("✅ File loaded successfully", "success")
 
-        def on_tab_changed(self, event):
-            """Handle tab change event"""
-            selection = event.widget.select()
-            tab_text = event.widget.tab(selection, "text")
+    def validate_and_display_file(self, file_path):
+        """Validate and display file information with enhanced preview"""
+        try:
+            # Show loading state
+            self.update_status("🔍 Validating file...", "info")
 
-            # Map tab text to nav button keys
-            tab_mapping = {
-                "📁 Data Upload": "upload",
-                "⚙️ Analysis Setup": "analysis",
-                "📈 Smart Predictions": "predictions",
-                "📊 Professional Charts": "charts",
-                "🏆 Model Performance": "performance",
-                "⚠️ Risk Management": "risk",
-                "⚙️ Settings": "settings"
-            }
+            # Read file based on extension
+            if file_path.endswith('.xlsx'):
+                df = pd.read_excel(file_path)
+            else:
+                df = pd.read_csv(file_path)
 
-            if tab_text in tab_mapping:
-                self.highlight_nav_button(tab_mapping[tab_text])
-
-            # Implementation of all GUI methods with professional styling...
-
-        def upload_csv_file(self, event=None):
-            """Handle CSV file upload with enhanced validation"""
-            file_path = filedialog.askopenfilename(
-                title="Select Stock Data CSV File",
-                filetypes=[
-                    ("CSV files", "*.csv"),
-                    ("Excel files", "*.xlsx"),
-                    ("All files", "*.*")
-                ],
-                initialdir=os.getcwd()
-            )
-
-            if file_path:
-                self.csv_file_path = file_path
-                self.ai_agent.csv_file_path = file_path
-                self.validate_and_display_file(file_path)
-                self.update_status("✅ File loaded successfully", "success")
-
-        def validate_and_display_file(self, file_path):
-            """Validate and display file information with enhanced preview"""
-            try:
-                # Show loading state
-                self.update_status("🔍 Validating file...", "info")
-
-                # Read file based on extension
-                if file_path.endswith('.xlsx'):
-                    df = pd.read_excel(file_path)
-                else:
-                    df = pd.read_csv(file_path)
-
-                # Basic file info with professional formatting
-                file_size_mb = os.path.getsize(file_path) / 1024 / 1024
-                info_text = f"""📄 FILE INFORMATION
+            # Basic file info with professional formatting
+            file_size_mb = os.path.getsize(file_path) / 1024 / 1024
+            info_text = f"""📄 FILE INFORMATION
             {'=' * 50}
             📁 Filename: {os.path.basename(file_path)}
             📊 Data Points: {len(df):,} rows
@@ -4049,13 +4632,13 @@ class ProfessionalSmartStockAIApp:
             🔍 DATA QUALITY ASSESSMENT
             {'=' * 50}"""
 
-                # Enhanced validation results
-                validation_results = self.ai_agent.validate_data_quality(df)
-                info_text += f"\n{validation_results}"
+            # Enhanced validation results
+            validation_results = self.ai_agent.validate_data_quality(df)
+            info_text += f"\n{validation_results}"
 
-                # Add data insights
-                if len(df) > 0:
-                    info_text += f"""
+            # Add data insights
+            if len(df) > 0:
+                info_text += f"""
 
             📈 MARKET DATA INSIGHTS
             {'=' * 50}
@@ -4063,31 +4646,31 @@ class ProfessionalSmartStockAIApp:
             • Data Completeness: {((df.count().sum() / (len(df) * len(df.columns))) * 100):.1f}%
             • Memory Usage: {df.memory_usage(deep=True).sum() / 1024:.1f} KB"""
 
-                    if 'Close' in df.columns:
-                        price_range = df['Close'].max() - df['Close'].min()
-                        price_volatility = df['Close'].std() / df['Close'].mean() * 100
-                        info_text += f"""
+                if 'Close' in df.columns:
+                    price_range = df['Close'].max() - df['Close'].min()
+                    price_volatility = df['Close'].std() / df['Close'].mean() * 100
+                    info_text += f"""
             • Price Range: ${df['Close'].min():.2f} - ${df['Close'].max():.2f} (${price_range:.2f})
             • Price Volatility: {price_volatility:.1f}%"""
 
-                    if 'Volume' in df.columns:
-                        avg_volume = df['Volume'].mean()
-                        info_text += f"""
+                if 'Volume' in df.columns:
+                    avg_volume = df['Volume'].mean()
+                    info_text += f"""
             • Average Volume: {avg_volume:,.0f}"""
 
-                self.file_info_text.delete(1.0, tk.END)
-                self.file_info_text.insert(tk.END, info_text)
+            self.file_info_text.delete(1.0, tk.END)
+            self.file_info_text.insert(tk.END, info_text)
 
-                # Update data preview with professional styling
-                self.update_data_preview(df)
+            # Update data preview with professional styling
+            self.update_data_preview(df)
 
-                # Update statistics
-                self.update_statistics(df)
+            # Update statistics
+            self.update_statistics(df)
 
-                self.update_status("✅ File validation completed", "success")
+            self.update_status("✅ File validation completed", "success")
 
-            except Exception as e:
-                error_text = f"""❌ FILE VALIDATION ERROR
+        except Exception as e:
+            error_text = f"""❌ FILE VALIDATION ERROR
             {'=' * 50}
             Error: {str(e)}
 
@@ -4097,352 +4680,352 @@ class ProfessionalSmartStockAIApp:
             • Verify file is not corrupted or in use by another application
             • Try opening file in Excel/spreadsheet software first"""
 
-                self.file_info_text.delete(1.0, tk.END)
-                self.file_info_text.insert(tk.END, error_text)
-                self.update_status(f"❌ File validation failed: {str(e)}", "error")
+            self.file_info_text.delete(1.0, tk.END)
+            self.file_info_text.insert(tk.END, error_text)
+            self.update_status(f"❌ File validation failed: {str(e)}", "error")
 
-        def update_data_preview(self, df):
-            """Update data preview with professional styling"""
-            # Clear existing items
-            for item in self.data_preview.get_children():
-                self.data_preview.delete(item)
+    def update_data_preview(self, df):
+        """Update data preview with professional styling"""
+        # Clear existing items
+        for item in self.data_preview.get_children():
+            self.data_preview.delete(item)
 
-            # Configure columns with enhanced styling
-            self.data_preview['columns'] = list(df.columns)
-            self.data_preview['show'] = 'headings'
+        # Configure columns with enhanced styling
+        self.data_preview['columns'] = list(df.columns)
+        self.data_preview['show'] = 'headings'
 
-            # Set column properties
+        # Set column properties
+        for col in df.columns:
+            self.data_preview.heading(col, text=col, anchor=tk.CENTER)
+
+            # Adjust column width based on content
+            if col in ['Date']:
+                width = 120
+            elif col in ['Open', 'High', 'Low', 'Close']:
+                width = 100
+            elif col in ['Volume']:
+                width = 120
+            else:
+                width = 80
+
+            self.data_preview.column(col, width=width, anchor=tk.CENTER)
+
+        # Insert data with alternating row colors (first 50 rows for performance)
+        preview_rows = min(50, len(df))
+        for i, (index, row) in enumerate(df.head(preview_rows).iterrows()):
+            # Format values for better display
+            formatted_row = []
             for col in df.columns:
-                self.data_preview.heading(col, text=col, anchor=tk.CENTER)
-
-                # Adjust column width based on content
-                if col in ['Date']:
-                    width = 120
-                elif col in ['Open', 'High', 'Low', 'Close']:
-                    width = 100
-                elif col in ['Volume']:
-                    width = 120
+                value = row[col]
+                if pd.isna(value):
+                    formatted_row.append("N/A")
+                elif col in ['Open', 'High', 'Low', 'Close'] and pd.api.types.is_numeric_dtype(df[col]):
+                    formatted_row.append(f"${value:.2f}")
+                elif col == 'Volume' and pd.api.types.is_numeric_dtype(df[col]):
+                    formatted_row.append(f"{value:,.0f}")
                 else:
-                    width = 80
+                    formatted_row.append(str(value))
 
-                self.data_preview.column(col, width=width, anchor=tk.CENTER)
+            # Insert with tags for styling
+            tags = ('evenrow',) if i % 2 == 0 else ('oddrow',)
+            self.data_preview.insert('', tk.END, values=formatted_row, tags=tags)
 
-            # Insert data with alternating row colors (first 50 rows for performance)
-            preview_rows = min(50, len(df))
-            for i, (index, row) in enumerate(df.head(preview_rows).iterrows()):
-                # Format values for better display
-                formatted_row = []
-                for col in df.columns:
-                    value = row[col]
-                    if pd.isna(value):
-                        formatted_row.append("N/A")
-                    elif col in ['Open', 'High', 'Low', 'Close'] and pd.api.types.is_numeric_dtype(df[col]):
-                        formatted_row.append(f"${value:.2f}")
-                    elif col == 'Volume' and pd.api.types.is_numeric_dtype(df[col]):
-                        formatted_row.append(f"{value:,.0f}")
-                    else:
-                        formatted_row.append(str(value))
+        # Configure row styling
+        self.data_preview.tag_configure('evenrow', background=self.colors['white'])
+        self.data_preview.tag_configure('oddrow', background=self.colors['light_gray'])
 
-                # Insert with tags for styling
-                tags = ('evenrow',) if i % 2 == 0 else ('oddrow',)
-                self.data_preview.insert('', tk.END, values=formatted_row, tags=tags)
+    def update_statistics(self, df):
+        """Update statistical summary with professional formatting"""
+        try:
+            numeric_df = df.select_dtypes(include=[np.number])
 
-            # Configure row styling
-            self.data_preview.tag_configure('evenrow', background=self.colors['white'])
-            self.data_preview.tag_configure('oddrow', background=self.colors['light_gray'])
-
-        def update_statistics(self, df):
-            """Update statistical summary with professional formatting"""
-            try:
-                numeric_df = df.select_dtypes(include=[np.number])
-
-                stats_text = f"""📊 STATISTICAL SUMMARY
+            stats_text = f"""📊 STATISTICAL SUMMARY
             {'=' * 60}
 
             📈 DESCRIPTIVE STATISTICS
             {'-' * 40}
             """
-                if len(numeric_df.columns) > 0:
-                    stats_text += numeric_df.describe().round(4).to_string()
+            if len(numeric_df.columns) > 0:
+                stats_text += numeric_df.describe().round(4).to_string()
 
-                    # Add additional insights
-                    stats_text += f"""
+                # Add additional insights
+                stats_text += f"""
 
             🔍 ADVANCED METRICS
             {'-' * 40}"""
 
-                    for col in numeric_df.columns:
-                        if col in ['Open', 'High', 'Low', 'Close']:
-                            returns = numeric_df[col].pct_change().dropna()
-                            if len(returns) > 0:
-                                stats_text += f"""
+                for col in numeric_df.columns:
+                    if col in ['Open', 'High', 'Low', 'Close']:
+                        returns = numeric_df[col].pct_change().dropna()
+                        if len(returns) > 0:
+                            stats_text += f"""
             {col}:
               • Daily Volatility: {returns.std():.4f} ({returns.std() * 100:.2f}%)
               • Annualized Volatility: {returns.std() * np.sqrt(252):.4f} ({returns.std() * np.sqrt(252) * 100:.1f}%)
               • Skewness: {returns.skew():.4f}
               • Kurtosis: {returns.kurtosis():.4f}"""
 
-                else:
-                    stats_text += "No numeric columns found for statistical analysis."
+            else:
+                stats_text += "No numeric columns found for statistical analysis."
 
-                self.stats_text.delete(1.0, tk.END)
-                self.stats_text.insert(tk.END, stats_text)
+            self.stats_text.delete(1.0, tk.END)
+            self.stats_text.insert(tk.END, stats_text)
 
-            except Exception as e:
-                error_text = f"""❌ STATISTICS ERROR
+        except Exception as e:
+            error_text = f"""❌ STATISTICS ERROR
             {'=' * 40}
             Error generating statistics: {str(e)}
 
             The file may contain non-numeric data or formatting issues."""
 
-                self.stats_text.delete(1.0, tk.END)
-                self.stats_text.insert(tk.END, error_text)
+            self.stats_text.delete(1.0, tk.END)
+            self.stats_text.insert(tk.END, error_text)
 
-        def use_sample_data(self):
-            """Generate and use enhanced sample data with professional feedback"""
-            try:
-                self.update_status("🧪 Generating professional sample dataset...", "info")
+    def use_sample_data(self):
+        """Generate and use enhanced sample data with professional feedback"""
+        try:
+            self.update_status("🧪 Generating professional sample dataset...", "info")
 
-                # Show progress
-                self.progress.start()
+            # Show progress
+            self.progress.start()
 
-                # Generate sample data in background thread
-                def generate_sample():
-                    sample_file = self.ai_agent.create_enhanced_sample_data()
+            # Generate sample data in background thread
+            def generate_sample():
+                sample_file = self.ai_agent.create_enhanced_sample_data()
 
-                    # Update UI in main thread
-                    self.root.after(0, lambda: self.complete_sample_generation(sample_file))
+                # Update UI in main thread
+                self.root.after(0, lambda: self.complete_sample_generation(sample_file))
 
-                thread = threading.Thread(target=generate_sample)
-                thread.daemon = True
-                thread.start()
-
-            except Exception as e:
-                self.progress.stop()
-                messagebox.showerror("Sample Data Error", f"Failed to generate sample data:\n\n{str(e)}")
-                self.update_status("❌ Sample data generation failed", "error")
-
-        def complete_sample_generation(self, sample_file):
-            """Complete sample data generation"""
-            try:
-                self.progress.stop()
-                self.csv_file_path = sample_file
-                self.ai_agent.csv_file_path = sample_file
-                self.validate_and_display_file(sample_file)
-                self.update_status("✅ Professional sample data generated successfully", "success")
-
-                # Show success message
-                messagebox.showinfo("Sample Data Generated",
-                                    "Professional sample dataset created successfully!\n\n"
-                                    "The dataset includes:\n"
-                                    "• 500 days of realistic trading data\n"
-                                    "• Proper OHLC price relationships\n"
-                                    "• Volume patterns with institutional activity\n"
-                                    "• Market regime changes and volatility clustering\n"
-                                    "• Ready for comprehensive analysis")
-
-            except Exception as e:
-                self.update_status(f"❌ Error completing sample generation: {str(e)}", "error")
-
-        def import_from_url(self):
-            """Import data from URL with enhanced error handling"""
-            # Create custom dialog
-            dialog = tk.Toplevel(self.root)
-            dialog.title("Import Data from URL")
-            dialog.geometry("600x300")
-            dialog.configure(bg=self.colors['white'])
-            dialog.transient(self.root)
-            dialog.grab_set()
-
-            # Center dialog
-            dialog.update_idletasks()
-            x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
-            y = (dialog.winfo_screenheight() // 2) - (300 // 2)
-            dialog.geometry(f"+{x}+{y}")
-
-            # Dialog content
-            content_frame = tk.Frame(dialog, bg=self.colors['white'])
-            content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
-
-            title_label = tk.Label(content_frame,
-                                   text="📡 Import Stock Data from URL",
-                                   font=('Segoe UI', 16, 'bold'),
-                                   bg=self.colors['white'],
-                                   fg=self.colors['dark_blue'])
-            title_label.pack(anchor=tk.W, pady=(0, 20))
-
-            instruction_label = tk.Label(content_frame,
-                                         text="Enter the URL of a CSV file containing stock market data:",
-                                         font=('Segoe UI', 11),
-                                         bg=self.colors['white'],
-                                         fg=self.colors['dark_blue'])
-            instruction_label.pack(anchor=tk.W, pady=(0, 10))
-
-            # URL entry
-            url_frame = tk.Frame(content_frame, bg=self.colors['white'])
-            url_frame.pack(fill=tk.X, pady=(0, 20))
-
-            url_entry = tk.Entry(url_frame,
-                                 font=('Segoe UI', 11),
-                                 bg=self.colors['white'],
-                                 fg=self.colors['dark_blue'],
-                                 relief='solid',
-                                 bd=2,
-                                 highlightthickness=0)
-            url_entry.pack(fill=tk.X, ipady=8)
-            url_entry.focus()
-
-            # Example URLs
-            example_label = tk.Label(content_frame,
-                                     text="Example URLs:",
-                                     font=('Segoe UI', 10, 'bold'),
-                                     bg=self.colors['white'],
-                                     fg=self.colors['steel_blue'])
-            example_label.pack(anchor=tk.W, pady=(10, 5))
-
-            examples_text = """• https://raw.githubusercontent.com/user/repo/main/stock_data.csv
-            • https://api.example.com/stock_data.csv
-            • Any direct link to a CSV file with stock data"""
-
-            examples_label = tk.Label(content_frame,
-                                      text=examples_text,
-                                      font=('Segoe UI', 9),
-                                      bg=self.colors['white'],
-                                      fg=self.colors['dark_blue'],
-                                      justify=tk.LEFT)
-            examples_label.pack(anchor=tk.W)
-
-            # Buttons
-            button_frame = tk.Frame(content_frame, bg=self.colors['white'])
-            button_frame.pack(fill=tk.X, pady=(30, 0))
-
-            def import_data():
-                url = url_entry.get().strip()
-                if url:
-                    dialog.destroy()
-                    self.process_url_import(url)
-                else:
-                    messagebox.showwarning("Invalid URL", "Please enter a valid URL")
-
-            def cancel_import():
-                dialog.destroy()
-
-            import_btn = tk.Button(button_frame,
-                                   text="📥 Import Data",
-                                   command=import_data,
-                                   bg=self.colors['primary_blue'],
-                                   fg='white',
-                                   font=('Segoe UI', 11, 'bold'),
-                                   relief='flat',
-                                   pady=10,
-                                   padx=20,
-                                   cursor='hand2')
-            import_btn.pack(side=tk.RIGHT, padx=(10, 0))
-
-            cancel_btn = tk.Button(button_frame,
-                                   text="❌ Cancel",
-                                   command=cancel_import,
-                                   bg=self.colors['medium_gray'],
-                                   fg=self.colors['dark_blue'],
-                                   font=('Segoe UI', 11),
-                                   relief='flat',
-                                   pady=10,
-                                   padx=20,
-                                   cursor='hand2')
-            cancel_btn.pack(side=tk.RIGHT)
-
-            # Bind Enter key
-            url_entry.bind('<Return>', lambda e: import_data())
-
-        def process_url_import(self, url):
-            """Process URL import in background thread"""
-
-            def import_thread():
-                try:
-                    self.root.after(0, lambda: self.update_status("📡 Importing data from URL...", "info"))
-                    self.root.after(0, lambda: self.progress.start())
-
-                    # Import data
-                    df = pd.read_csv(url)
-
-                    # Save to temporary file
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    temp_file = f"imported_data_{timestamp}.csv"
-                    df.to_csv(temp_file, index=False)
-
-                    # Update UI in main thread
-                    def complete_import():
-                        self.progress.stop()
-                        self.csv_file_path = temp_file
-                        self.ai_agent.csv_file_path = temp_file
-                        self.validate_and_display_file(temp_file)
-                        self.update_status("✅ Data imported successfully from URL", "success")
-
-                        messagebox.showinfo("Import Successful",
-                                            f"Data imported successfully!\n\n"
-                                            f"• {len(df):,} rows imported\n"
-                                            f"• {len(df.columns)} columns\n"
-                                            f"• Saved as: {temp_file}")
-
-                    self.root.after(0, complete_import)
-
-                except Exception as e:
-                    def show_error():
-                        self.progress.stop()
-                        self.update_status(f"❌ URL import failed: {str(e)}", "error")
-                        messagebox.showerror("Import Error",
-                                             f"Failed to import from URL:\n\n{str(e)}\n\n"
-                                             "Please check:\n"
-                                             "• URL is accessible\n"
-                                             "• File is in CSV format\n"
-                                             "• Internet connection is stable")
-
-                    self.root.after(0, show_error)
-
-            thread = threading.Thread(target=import_thread)
+            thread = threading.Thread(target=generate_sample)
             thread.daemon = True
             thread.start()
 
-        def validate_configuration(self):
-            """Validate analysis configuration with detailed feedback"""
-            issues = []
-            warnings = []
+        except Exception as e:
+            self.progress.stop()
+            messagebox.showerror("Sample Data Error", f"Failed to generate sample data:\n\n{str(e)}")
+            self.update_status("❌ Sample data generation failed", "error")
 
-            # Check if data is loaded
-            if not self.csv_file_path:
-                issues.append("• No data file loaded - Please upload a CSV file first")
+    def complete_sample_generation(self, sample_file):
+        """Complete sample data generation"""
+        try:
+            self.progress.stop()
+            self.csv_file_path = sample_file
+            self.ai_agent.csv_file_path = sample_file
+            self.validate_and_display_file(sample_file)
+            self.update_status("✅ Professional sample data generated successfully", "success")
 
-            # Check model selection
-            selected_models = [k for k, v in self.model_vars.items() if v.get()]
-            if not selected_models:
-                issues.append("• No ML models selected - Select at least one model")
+            # Show success message
+            messagebox.showinfo("Sample Data Generated",
+                                "Professional sample dataset created successfully!\n\n"
+                                "The dataset includes:\n"
+                                "• 500 days of realistic trading data\n"
+                                "• Proper OHLC price relationships\n"
+                                "• Volume patterns with institutional activity\n"
+                                "• Market regime changes and volatility clustering\n"
+                                "• Ready for comprehensive analysis")
 
-            selected_dl_models = [k for k, v in self.dl_vars.items() if v.get()]
+        except Exception as e:
+            self.update_status(f"❌ Error completing sample generation: {str(e)}", "error")
 
-            # Check deep learning availability
-            if selected_dl_models and not DEEP_LEARNING_AVAILABLE:
-                warnings.append("• Deep learning models selected but TensorFlow not available")
+    def import_from_url(self):
+        """Import data from URL with enhanced error handling"""
+        # Create custom dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Import Data from URL")
+        dialog.geometry("600x300")
+        dialog.configure(bg=self.colors['white'])
+        dialog.transient(self.root)
+        dialog.grab_set()
 
-            # Check technical indicators
-            selected_indicators = [k for k, v in self.indicator_vars.items() if v.get()]
-            if not selected_indicators:
-                warnings.append("• No technical indicators selected - Consider enabling some for better analysis")
+        # Center dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (300 // 2)
+        dialog.geometry(f"+{x}+{y}")
 
-            # Check prediction horizon
-            pred_days = self.prediction_days.get()
-            if pred_days > 14:
-                warnings.append(f"• High prediction horizon ({pred_days} days) may reduce accuracy")
+        # Dialog content
+        content_frame = tk.Frame(dialog, bg=self.colors['white'])
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
 
-            # Check training split
-            train_split = self.train_split.get()
-            if train_split < 0.7:
-                warnings.append(f"• Low training split ({train_split:.0%}) may affect model performance")
-            elif train_split > 0.9:
-                warnings.append(f"• High training split ({train_split:.0%}) may cause overfitting")
+        title_label = tk.Label(content_frame,
+                               text="📡 Import Stock Data from URL",
+                               font=('Segoe UI', 16, 'bold'),
+                               bg=self.colors['white'],
+                               fg=self.colors['dark_blue'])
+        title_label.pack(anchor=tk.W, pady=(0, 20))
 
-            # Show validation results
-            if issues:
-                result_text = f"""❌ CONFIGURATION ISSUES FOUND
+        instruction_label = tk.Label(content_frame,
+                                     text="Enter the URL of a CSV file containing stock market data:",
+                                     font=('Segoe UI', 11),
+                                     bg=self.colors['white'],
+                                     fg=self.colors['dark_blue'])
+        instruction_label.pack(anchor=tk.W, pady=(0, 10))
+
+        # URL entry
+        url_frame = tk.Frame(content_frame, bg=self.colors['white'])
+        url_frame.pack(fill=tk.X, pady=(0, 20))
+
+        url_entry = tk.Entry(url_frame,
+                             font=('Segoe UI', 11),
+                             bg=self.colors['white'],
+                             fg=self.colors['dark_blue'],
+                             relief='solid',
+                             bd=2,
+                             highlightthickness=0)
+        url_entry.pack(fill=tk.X, ipady=8)
+        url_entry.focus()
+
+        # Example URLs
+        example_label = tk.Label(content_frame,
+                                 text="Example URLs:",
+                                 font=('Segoe UI', 10, 'bold'),
+                                 bg=self.colors['white'],
+                                 fg=self.colors['steel_blue'])
+        example_label.pack(anchor=tk.W, pady=(10, 5))
+
+        examples_text = """• https://raw.githubusercontent.com/user/repo/main/stock_data.csv
+            • https://api.example.com/stock_data.csv
+            • Any direct link to a CSV file with stock data"""
+
+        examples_label = tk.Label(content_frame,
+                                  text=examples_text,
+                                  font=('Segoe UI', 9),
+                                  bg=self.colors['white'],
+                                  fg=self.colors['dark_blue'],
+                                  justify=tk.LEFT)
+        examples_label.pack(anchor=tk.W)
+
+        # Buttons
+        button_frame = tk.Frame(content_frame, bg=self.colors['white'])
+        button_frame.pack(fill=tk.X, pady=(30, 0))
+
+        def import_data():
+            url = url_entry.get().strip()
+            if url:
+                dialog.destroy()
+                self.process_url_import(url)
+            else:
+                messagebox.showwarning("Invalid URL", "Please enter a valid URL")
+
+        def cancel_import():
+            dialog.destroy()
+
+        import_btn = tk.Button(button_frame,
+                               text="📥 Import Data",
+                               command=import_data,
+                               bg=self.colors['primary_blue'],
+                               fg='white',
+                               font=('Segoe UI', 11, 'bold'),
+                               relief='flat',
+                               pady=10,
+                               padx=20,
+                               cursor='hand2')
+        import_btn.pack(side=tk.RIGHT, padx=(10, 0))
+
+        cancel_btn = tk.Button(button_frame,
+                               text="❌ Cancel",
+                               command=cancel_import,
+                               bg=self.colors['medium_gray'],
+                               fg=self.colors['dark_blue'],
+                               font=('Segoe UI', 11),
+                               relief='flat',
+                               pady=10,
+                               padx=20,
+                               cursor='hand2')
+        cancel_btn.pack(side=tk.RIGHT)
+
+        # Bind Enter key
+        url_entry.bind('<Return>', lambda e: import_data())
+
+    def process_url_import(self, url):
+        """Process URL import in background thread"""
+
+        def import_thread():
+            try:
+                self.root.after(0, lambda: self.update_status("📡 Importing data from URL...", "info"))
+                self.root.after(0, lambda: self.progress.start())
+
+                # Import data
+                df = pd.read_csv(url)
+
+                # Save to temporary file
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                temp_file = f"imported_data_{timestamp}.csv"
+                df.to_csv(temp_file, index=False)
+
+                # Update UI in main thread
+                def complete_import():
+                    self.progress.stop()
+                    self.csv_file_path = temp_file
+                    self.ai_agent.csv_file_path = temp_file
+                    self.validate_and_display_file(temp_file)
+                    self.update_status("✅ Data imported successfully from URL", "success")
+
+                    messagebox.showinfo("Import Successful",
+                                        f"Data imported successfully!\n\n"
+                                        f"• {len(df):,} rows imported\n"
+                                        f"• {len(df.columns)} columns\n"
+                                        f"• Saved as: {temp_file}")
+
+                self.root.after(0, complete_import)
+
+            except Exception as e:
+                def show_error():
+                    self.progress.stop()
+                    self.update_status(f"❌ URL import failed: {str(e)}", "error")
+                    messagebox.showerror("Import Error",
+                                         f"Failed to import from URL:\n\n{str(e)}\n\n"
+                                         "Please check:\n"
+                                         "• URL is accessible\n"
+                                         "• File is in CSV format\n"
+                                         "• Internet connection is stable")
+
+                self.root.after(0, show_error)
+
+        thread = threading.Thread(target=import_thread)
+        thread.daemon = True
+        thread.start()
+
+    def validate_configuration(self):
+        """Validate analysis configuration with detailed feedback"""
+        issues = []
+        warnings = []
+
+        # Check if data is loaded
+        if not self.csv_file_path:
+            issues.append("• No data file loaded - Please upload a CSV file first")
+
+        # Check model selection
+        selected_models = [k for k, v in self.model_vars.items() if v.get()]
+        if not selected_models:
+            issues.append("• No ML models selected - Select at least one model")
+
+        selected_dl_models = [k for k, v in self.dl_vars.items() if v.get()]
+
+        # Check deep learning availability
+        if selected_dl_models and not DEEP_LEARNING_AVAILABLE:
+            warnings.append("• Deep learning models selected but TensorFlow not available")
+
+        # Check technical indicators
+        selected_indicators = [k for k, v in self.indicator_vars.items() if v.get()]
+        if not selected_indicators:
+            warnings.append("• No technical indicators selected - Consider enabling some for better analysis")
+
+        # Check prediction horizon
+        pred_days = self.prediction_days.get()
+        if pred_days > 14:
+            warnings.append(f"• High prediction horizon ({pred_days} days) may reduce accuracy")
+
+        # Check training split
+        train_split = self.train_split.get()
+        if train_split < 0.7:
+            warnings.append(f"• Low training split ({train_split:.0%}) may affect model performance")
+        elif train_split > 0.9:
+            warnings.append(f"• High training split ({train_split:.0%}) may cause overfitting")
+
+        # Show validation results
+        if issues:
+            result_text = f"""❌ CONFIGURATION ISSUES FOUND
             {'=' * 50}
 
             🔴 Critical Issues:
@@ -4450,10 +5033,10 @@ class ProfessionalSmartStockAIApp:
 
             Please fix these issues before starting analysis."""
 
-                messagebox.showerror("Configuration Issues", result_text)
+            messagebox.showerror("Configuration Issues", result_text)
 
-            elif warnings:
-                result_text = f"""⚠️ CONFIGURATION WARNINGS
+        elif warnings:
+            result_text = f"""⚠️ CONFIGURATION WARNINGS
             {'=' * 50}
 
             🟡 Warnings:
@@ -4461,13 +5044,13 @@ class ProfessionalSmartStockAIApp:
 
             You can proceed with analysis, but consider reviewing these settings."""
 
-                response = messagebox.askyesno("Configuration Warnings",
-                                               result_text + "\n\nProceed with analysis anyway?")
-                if response:
-                    messagebox.showinfo("Validation Passed", "✅ Configuration validated - Ready for analysis!")
+            response = messagebox.askyesno("Configuration Warnings",
+                                           result_text + "\n\nProceed with analysis anyway?")
+            if response:
+                messagebox.showinfo("Validation Passed", "✅ Configuration validated - Ready for analysis!")
 
-            else:
-                success_text = f"""✅ CONFIGURATION VALIDATED
+        else:
+            success_text = f"""✅ CONFIGURATION VALIDATED
             {'=' * 50}
 
             🎯 Ready for Analysis:
@@ -4479,93 +5062,93 @@ class ProfessionalSmartStockAIApp:
 
             Configuration is perfect for professional analysis!"""
 
-                messagebox.showinfo("Validation Successful", success_text)
+            messagebox.showinfo("Validation Successful", success_text)
 
-        def save_configuration(self, event=None):           #break#3
-            def save_configuration(self, event=None):
-                """Save current configuration to file with enhanced format"""
-                config = {
-                    'metadata': {
-                        'created_by': self.get_current_user(),
-                        'created_at': datetime.now().isoformat(),
-                        'version': '2.0',
-                        'description': 'SmartStock AI Professional Configuration'
-                    },
-                    'models': {k: v.get() for k, v in self.model_vars.items()},
-                    'deep_learning': {k: v.get() for k, v in self.dl_vars.items()},
-                    'indicators': {k: v.get() for k, v in self.indicator_vars.items()},
-                    'smart_money': {k: v.get() for k, v in self.smart_money_vars.items()},
-                    'optimization': {k: v.get() for k, v in self.optimization_vars.items()},
-                    'parameters': {
-                        'prediction_days': self.prediction_days.get(),
-                        'train_split': self.train_split.get(),
-                        'sequence_length': self.sequence_length.get()
-                    },
-                    'validation': {k: v.get() for k, v in self.validation_vars.items()},
-                    'risk_settings': {
-                        'tolerance': self.risk_tolerance.get(),
-                        'position_size': self.position_size.get(),
-                        'stop_loss': self.stop_loss.get()
-                    },
-                    'appearance': {
-                        'theme': self.theme_var.get(),
-                        'font_scale': self.font_scale.get(),
-                        'zoom_factor': self.zoom_factor
-                    }
+    def save_configuration(self, event=None):  # break#3
+        def save_configuration(self, event=None):
+            """Save current configuration to file with enhanced format"""
+            config = {
+                'metadata': {
+                    'created_by': self.get_current_user(),
+                    'created_at': datetime.now().isoformat(),
+                    'version': '2.0',
+                    'description': 'SmartStock AI Professional Configuration'
+                },
+                'models': {k: v.get() for k, v in self.model_vars.items()},
+                'deep_learning': {k: v.get() for k, v in self.dl_vars.items()},
+                'indicators': {k: v.get() for k, v in self.indicator_vars.items()},
+                'smart_money': {k: v.get() for k, v in self.smart_money_vars.items()},
+                'optimization': {k: v.get() for k, v in self.optimization_vars.items()},
+                'parameters': {
+                    'prediction_days': self.prediction_days.get(),
+                    'train_split': self.train_split.get(),
+                    'sequence_length': self.sequence_length.get()
+                },
+                'validation': {k: v.get() for k, v in self.validation_vars.items()},
+                'risk_settings': {
+                    'tolerance': self.risk_tolerance.get(),
+                    'position_size': self.position_size.get(),
+                    'stop_loss': self.stop_loss.get()
+                },
+                'appearance': {
+                    'theme': self.theme_var.get(),
+                    'font_scale': self.font_scale.get(),
+                    'zoom_factor': self.zoom_factor
                 }
+            }
 
-                file_path = filedialog.asksaveasfilename(
-                    title="Save SmartStock AI Configuration",
-                    defaultextension=".json",
-                    filetypes=[
-                        ("SmartStock Config", "*.json"),
-                        ("All files", "*.*")
-                    ],
-                    initialdir=os.getcwd(),
-                    initialfile=f"smartstock_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                )
+            file_path = filedialog.asksaveasfilename(
+                title="Save SmartStock AI Configuration",
+                defaultextension=".json",
+                filetypes=[
+                    ("SmartStock Config", "*.json"),
+                    ("All files", "*.*")
+                ],
+                initialdir=os.getcwd(),
+                initialfile=f"smartstock_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            )
 
-                if file_path:
-                    try:
-                        with open(file_path, 'w', encoding='utf-8') as f:
-                            json.dump(config, f, indent=2, ensure_ascii=False)
+            if file_path:
+                try:
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(config, f, indent=2, ensure_ascii=False)
 
-                        messagebox.showinfo("Configuration Saved",
-                                            f"✅ Configuration saved successfully!\n\n"
-                                            f"📁 File: {os.path.basename(file_path)}\n"
-                                            f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                                            f"👤 User: {self.get_current_user()}")
+                    messagebox.showinfo("Configuration Saved",
+                                        f"✅ Configuration saved successfully!\n\n"
+                                        f"📁 File: {os.path.basename(file_path)}\n"
+                                        f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                                        f"👤 User: {self.get_current_user()}")
 
-                        self.update_status(f"✅ Configuration saved: {os.path.basename(file_path)}", "success")
+                    self.update_status(f"✅ Configuration saved: {os.path.basename(file_path)}", "success")
 
-                    except Exception as e:
-                        messagebox.showerror("Save Error", f"Failed to save configuration:\n\n{str(e)}")
-                        self.update_status("❌ Configuration save failed", "error")
+                except Exception as e:
+                    messagebox.showerror("Save Error", f"Failed to save configuration:\n\n{str(e)}")
+                    self.update_status("❌ Configuration save failed", "error")
 
-        def load_configuration(self):
-                """Load configuration from file with enhanced validation"""
-                file_path = filedialog.askopenfilename(
-                    title="Load SmartStock AI Configuration",
-                    filetypes=[
-                        ("SmartStock Config", "*.json"),
-                        ("All files", "*.*")
-                    ],
-                    initialdir=os.getcwd()
-                )
+    def load_configuration(self):
+        """Load configuration from file with enhanced validation"""
+        file_path = filedialog.askopenfilename(
+            title="Load SmartStock AI Configuration",
+            filetypes=[
+                ("SmartStock Config", "*.json"),
+                ("All files", "*.*")
+            ],
+            initialdir=os.getcwd()
+        )
 
-                if file_path:
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            config = json.load(f)
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
 
-                        # Validate configuration format
-                        if 'metadata' in config:
-                            metadata = config['metadata']
-                            created_by = metadata.get('created_by', 'Unknown')
-                            created_at = metadata.get('created_at', 'Unknown')
-                            version = metadata.get('version', '1.0')
+                # Validate configuration format
+                if 'metadata' in config:
+                    metadata = config['metadata']
+                    created_by = metadata.get('created_by', 'Unknown')
+                    created_at = metadata.get('created_at', 'Unknown')
+                    version = metadata.get('version', '1.0')
 
-                            load_info = f"""📋 CONFIGURATION INFO
+                    load_info = f"""📋 CONFIGURATION INFO
             {'=' * 40}
             👤 Created by: {created_by}
             📅 Created: {created_at}
@@ -4574,86 +5157,86 @@ class ProfessionalSmartStockAIApp:
 
             Load this configuration?"""
 
-                            response = messagebox.askyesno("Load Configuration", load_info)
-                            if not response:
-                                return
+                    response = messagebox.askyesno("Load Configuration", load_info)
+                    if not response:
+                        return
 
-                        # Apply configuration with error handling
-                        def safe_apply(section, variables, config_key):
-                            if config_key in config:
-                                for k, v in config[config_key].items():
-                                    if k in variables:
-                                        try:
-                                            variables[k].set(v)
-                                        except Exception as e:
-                                            print(f"Warning: Could not set {k} = {v}: {e}")
+                # Apply configuration with error handling
+                def safe_apply(section, variables, config_key):
+                    if config_key in config:
+                        for k, v in config[config_key].items():
+                            if k in variables:
+                                try:
+                                    variables[k].set(v)
+                                except Exception as e:
+                                    print(f"Warning: Could not set {k} = {v}: {e}")
 
-                        safe_apply("ML Models", self.model_vars, 'models')
-                        safe_apply("Deep Learning", self.dl_vars, 'deep_learning')
-                        safe_apply("Indicators", self.indicator_vars, 'indicators')
-                        safe_apply("Smart Money", self.smart_money_vars, 'smart_money')
-                        safe_apply("Optimization", self.optimization_vars, 'optimization')
-                        safe_apply("Validation", self.validation_vars, 'validation')
+                safe_apply("ML Models", self.model_vars, 'models')
+                safe_apply("Deep Learning", self.dl_vars, 'deep_learning')
+                safe_apply("Indicators", self.indicator_vars, 'indicators')
+                safe_apply("Smart Money", self.smart_money_vars, 'smart_money')
+                safe_apply("Optimization", self.optimization_vars, 'optimization')
+                safe_apply("Validation", self.validation_vars, 'validation')
 
-                        # Apply parameters
-                        if 'parameters' in config:
-                            params = config['parameters']
-                            self.prediction_days.set(params.get('prediction_days', 5))
-                            self.train_split.set(params.get('train_split', 0.8))
-                            self.sequence_length.set(params.get('sequence_length', 60))
+                # Apply parameters
+                if 'parameters' in config:
+                    params = config['parameters']
+                    self.prediction_days.set(params.get('prediction_days', 5))
+                    self.train_split.set(params.get('train_split', 0.8))
+                    self.sequence_length.set(params.get('sequence_length', 60))
 
-                        # Apply risk settings
-                        if 'risk_settings' in config:
-                            risk = config['risk_settings']
-                            self.risk_tolerance.set(risk.get('tolerance', 'moderate'))
-                            self.position_size.set(risk.get('position_size', 5.0))
-                            self.stop_loss.set(risk.get('stop_loss', 5.0))
+                # Apply risk settings
+                if 'risk_settings' in config:
+                    risk = config['risk_settings']
+                    self.risk_tolerance.set(risk.get('tolerance', 'moderate'))
+                    self.position_size.set(risk.get('position_size', 5.0))
+                    self.stop_loss.set(risk.get('stop_loss', 5.0))
 
-                        # Apply appearance settings
-                        if 'appearance' in config:
-                            appearance = config['appearance']
-                            self.theme_var.set(appearance.get('theme', 'Professional Light'))
-                            self.font_scale.set(appearance.get('font_scale', 1.0))
-                            if 'zoom_factor' in appearance:
-                                self.zoom_factor = appearance['zoom_factor']
-                                self.apply_zoom()
+                # Apply appearance settings
+                if 'appearance' in config:
+                    appearance = config['appearance']
+                    self.theme_var.set(appearance.get('theme', 'Professional Light'))
+                    self.font_scale.set(appearance.get('font_scale', 1.0))
+                    if 'zoom_factor' in appearance:
+                        self.zoom_factor = appearance['zoom_factor']
+                        self.apply_zoom()
 
-                        messagebox.showinfo("Configuration Loaded",
-                                            "✅ Configuration loaded successfully!\n\n"
-                                            "All settings have been applied to the current session.")
+                messagebox.showinfo("Configuration Loaded",
+                                    "✅ Configuration loaded successfully!\n\n"
+                                    "All settings have been applied to the current session.")
 
-                        self.update_status(f"✅ Configuration loaded: {os.path.basename(file_path)}", "success")
+                self.update_status(f"✅ Configuration loaded: {os.path.basename(file_path)}", "success")
 
-                    except Exception as e:
-                        messagebox.showerror("Load Error",
-                                             f"Failed to load configuration:\n\n{str(e)}\n\n"
-                                             "Please ensure the file is a valid SmartStock configuration.")
-                        self.update_status("❌ Configuration load failed", "error")
+            except Exception as e:
+                messagebox.showerror("Load Error",
+                                     f"Failed to load configuration:\n\n{str(e)}\n\n"
+                                     "Please ensure the file is a valid SmartStock configuration.")
+                self.update_status("❌ Configuration load failed", "error")
 
-        def start_analysis(self):
-                """Start the comprehensive analysis process with enhanced UI feedback"""
-                if not self.csv_file_path:
-                    messagebox.showwarning("No Data",
-                                           "Please upload a CSV file first!\n\n"
-                                           "Use the 'Upload CSV File' button or generate sample data.")
-                    return
+    def start_analysis(self):
+        """Start the comprehensive analysis process with enhanced UI feedback"""
+        if not self.csv_file_path:
+            messagebox.showwarning("No Data",
+                                   "Please upload a CSV file first!\n\n"
+                                   "Use the 'Upload CSV File' button or generate sample data.")
+            return
 
-                # Final validation
-                issues = []
-                if not any(var.get() for var in self.model_vars.values()):
-                    issues.append("No ML models selected")
+        # Final validation
+        issues = []
+        if not any(var.get() for var in self.model_vars.values()):
+            issues.append("No ML models selected")
 
-                if issues:
-                    messagebox.showwarning("Configuration Issue",
-                                           f"Cannot start analysis:\n\n" + "\n".join(f"• {issue}" for issue in issues))
-                    return
+        if issues:
+            messagebox.showwarning("Configuration Issue",
+                                   f"Cannot start analysis:\n\n" + "\n".join(f"• {issue}" for issue in issues))
+            return
 
-                # Show analysis confirmation dialog
-                selected_models = [k for k, v in self.model_vars.items() if v.get()]
-                selected_dl = [k for k, v in self.dl_vars.items() if v.get()]
-                selected_indicators = [k for k, v in self.indicator_vars.items() if v.get()]
+        # Show analysis confirmation dialog
+        selected_models = [k for k, v in self.model_vars.items() if v.get()]
+        selected_dl = [k for k, v in self.dl_vars.items() if v.get()]
+        selected_indicators = [k for k, v in self.indicator_vars.items() if v.get()]
 
-                confirmation = f"""🚀 START COMPREHENSIVE ANALYSIS
+        confirmation = f"""🚀 START COMPREHENSIVE ANALYSIS
             {'=' * 50}
 
             📊 Data: {os.path.basename(self.csv_file_path)}
@@ -4667,69 +5250,69 @@ class ProfessionalSmartStockAIApp:
 
             Start analysis now?"""
 
-                response = messagebox.askyesno("Confirm Analysis", confirmation)
-                if not response:
-                    return
+        response = messagebox.askyesno("Confirm Analysis", confirmation)
+        if not response:
+            return
 
-                # Start analysis
-                self.progress.start()
-                self.update_status("🚀 Starting comprehensive analysis...", "info")
+        # Start analysis
+        self.progress.start()
+        self.update_status("🚀 Starting comprehensive analysis...", "info")
 
-                # Clear previous results
-                self.predictions_text.delete(1.0, tk.END)
-                self.detailed_predictions.delete(1.0, tk.END)
-                self.risk_text.delete(1.0, tk.END)
-                self.progress_text.delete(1.0, tk.END)
+        # Clear previous results
+        self.predictions_text.delete(1.0, tk.END)
+        self.detailed_predictions.delete(1.0, tk.END)
+        self.risk_text.delete(1.0, tk.END)
+        self.progress_text.delete(1.0, tk.END)
 
-                # Run analysis in background thread
-                analysis_thread = threading.Thread(target=self.run_comprehensive_analysis)
-                analysis_thread.daemon = True
-                analysis_thread.start()
+        # Run analysis in background thread
+        analysis_thread = threading.Thread(target=self.run_comprehensive_analysis)
+        analysis_thread.daemon = True
+        analysis_thread.start()
 
-        def run_comprehensive_analysis(self):
-                """Run the complete analysis pipeline with professional error handling"""
+    def run_comprehensive_analysis(self):
+        """Run the complete analysis pipeline with professional error handling"""
+        try:
+            # Initialize progress tracking
+            steps = [
+                ("🔍 Validating and preprocessing data", self.preprocess_data_step),
+                ("📈 Calculating technical indicators", self.calculate_indicators_step),
+                ("💰 Analyzing smart money flow", self.analyze_smart_money_step),
+                ("🔧 Engineering advanced features", self.engineer_features_step),
+                ("🤖 Training machine learning models", self.train_ml_models_step),
+                ("🧠 Training deep learning models", self.train_dl_models_step),
+                ("🎯 Generating predictions", self.generate_predictions_step),
+                ("⚠️ Calculating risk metrics", self.calculate_risk_step),
+                ("📊 Finalizing results", self.finalize_results_step)
+            ]
+
+            total_steps = len(steps)
+
+            for i, (description, step_function) in enumerate(steps):
                 try:
-                    # Initialize progress tracking
-                    steps = [
-                        ("🔍 Validating and preprocessing data", self.preprocess_data_step),
-                        ("📈 Calculating technical indicators", self.calculate_indicators_step),
-                        ("💰 Analyzing smart money flow", self.analyze_smart_money_step),
-                        ("🔧 Engineering advanced features", self.engineer_features_step),
-                        ("🤖 Training machine learning models", self.train_ml_models_step),
-                        ("🧠 Training deep learning models", self.train_dl_models_step),
-                        ("🎯 Generating predictions", self.generate_predictions_step),
-                        ("⚠️ Calculating risk metrics", self.calculate_risk_step),
-                        ("📊 Finalizing results", self.finalize_results_step)
-                    ]
+                    self.update_progress(f"Step {i + 1}/{total_steps}: {description}")
 
-                    total_steps = len(steps)
+                    # Execute step
+                    success = step_function()
 
-                    for i, (description, step_function) in enumerate(steps):
-                        try:
-                            self.update_progress(f"Step {i + 1}/{total_steps}: {description}")
+                    if not success:
+                        raise Exception(f"Step failed: {description}")
 
-                            # Execute step
-                            success = step_function()
+                    # Update progress percentage
+                    progress_pct = ((i + 1) / total_steps) * 100
+                    self.root.after(0, lambda p=progress_pct: self.update_progress_percentage(p))
 
-                            if not success:
-                                raise Exception(f"Step failed: {description}")
+                except Exception as step_error:
+                    raise Exception(f"{description} failed: {str(step_error)}")
 
-                            # Update progress percentage
-                            progress_pct = ((i + 1) / total_steps) * 100
-                            self.root.after(0, lambda p=progress_pct: self.update_progress_percentage(p))
+            # Analysis completed successfully
+            self.analysis_complete = True
+            self.root.after(0, lambda: self.update_status("✅ Comprehensive analysis completed successfully!",
+                                                          "success"))
+            self.root.after(0, self.show_analysis_complete_dialog)
 
-                        except Exception as step_error:
-                            raise Exception(f"{description} failed: {str(step_error)}")
-
-                    # Analysis completed successfully
-                    self.analysis_complete = True
-                    self.root.after(0, lambda: self.update_status("✅ Comprehensive analysis completed successfully!",
-                                                                  "success"))
-                    self.root.after(0, self.show_analysis_complete_dialog)
-
-                except Exception as e:
-                    # Handle analysis errors
-                    error_details = f"""
+        except Exception as e:
+            # Handle analysis errors
+            error_details = f"""
             🔴 ANALYSIS ERROR
             {'=' * 50}
             Error: {str(e)}
@@ -4740,105 +5323,105 @@ class ProfessionalSmartStockAIApp:
             If the problem persists, verify your data file format.
             """
 
-                    def show_error():
-                        self.progress.stop()
-                        self.progress_text.delete(1.0, tk.END)
-                        self.progress_text.insert(tk.END, error_details)
-                        self.update_status("❌ Analysis failed - check details", "error")
+            def show_error():
+                self.progress.stop()
+                self.progress_text.delete(1.0, tk.END)
+                self.progress_text.insert(tk.END, error_details)
+                self.update_status("❌ Analysis failed - check details", "error")
 
-                        messagebox.showerror("Analysis Error",
-                                             f"Analysis failed:\n\n{str(e)}\n\n"
-                                             "Check the progress tab for detailed error information.")
+                messagebox.showerror("Analysis Error",
+                                     f"Analysis failed:\n\n{str(e)}\n\n"
+                                     "Check the progress tab for detailed error information.")
 
-                    self.root.after(0, show_error)
-                finally:
-                    self.root.after(0, lambda: self.progress.stop())
+            self.root.after(0, show_error)
+        finally:
+            self.root.after(0, lambda: self.progress.stop())
 
-        def preprocess_data_step(self):
-                """Data preprocessing step"""
-                return self.ai_agent.enhanced_data_preprocessing(self.csv_file_path)
+    def preprocess_data_step(self):
+        """Data preprocessing step"""
+        return self.ai_agent.enhanced_data_preprocessing(self.csv_file_path)
 
-        def calculate_indicators_step(self):
-                """Technical indicators calculation step"""
-                if any(self.indicator_vars[k].get() for k in self.indicator_vars):
-                    self.ai_agent.calculate_advanced_technical_indicators()
-                return True
+    def calculate_indicators_step(self):
+        """Technical indicators calculation step"""
+        if any(self.indicator_vars[k].get() for k in self.indicator_vars):
+            self.ai_agent.calculate_advanced_technical_indicators()
+        return True
 
-        def analyze_smart_money_step(self):
-                """Smart money analysis step"""
-                if any(self.smart_money_vars[k].get() for k in self.smart_money_vars):
-                    self.ai_agent.analyze_smart_money_flow()
-                return True
+    def analyze_smart_money_step(self):
+        """Smart money analysis step"""
+        if any(self.smart_money_vars[k].get() for k in self.smart_money_vars):
+            self.ai_agent.analyze_smart_money_flow()
+        return True
 
-        def engineer_features_step(self):
-                """Feature engineering step"""
-                self.ai_agent.enhanced_feature_engineering()
-                self.ai_agent.prepare_enhanced_features()
-                return True
+    def engineer_features_step(self):
+        """Feature engineering step"""
+        self.ai_agent.enhanced_feature_engineering()
+        self.ai_agent.prepare_enhanced_features()
+        return True
 
-        def train_ml_models_step(self):
-                """ML models training step"""
-                selected_models = [k for k, v in self.model_vars.items() if v.get()]
-                if selected_models:
-                    self.ai_agent.train_enhanced_ml_models(selected_models)
-                return True
+    def train_ml_models_step(self):
+        """ML models training step"""
+        selected_models = [k for k, v in self.model_vars.items() if v.get()]
+        if selected_models:
+            self.ai_agent.train_enhanced_ml_models(selected_models)
+        return True
 
-        def train_dl_models_step(self):
-                """Deep learning models training step"""
-                selected_dl_models = [k for k, v in self.dl_vars.items() if v.get()]
-                if selected_dl_models and DEEP_LEARNING_AVAILABLE:
-                    sequence_length = self.sequence_length.get()
-                    self.ai_agent.train_advanced_deep_learning_models(sequence_length, selected_dl_models)
-                return True
+    def train_dl_models_step(self):
+        """Deep learning models training step"""
+        selected_dl_models = [k for k, v in self.dl_vars.items() if v.get()]
+        if selected_dl_models and DEEP_LEARNING_AVAILABLE:
+            sequence_length = self.sequence_length.get()
+            self.ai_agent.train_advanced_deep_learning_models(sequence_length, selected_dl_models)
+        return True
 
-        def generate_predictions_step(self):
-                """Predictions generation step"""
-                predictions, confidence = self.ai_agent.make_enhanced_predictions()
-                self.root.after(0, lambda: self.display_comprehensive_results(predictions, confidence))
-                return True
+    def generate_predictions_step(self):
+        """Predictions generation step"""
+        predictions, confidence = self.ai_agent.make_enhanced_predictions()
+        self.root.after(0, lambda: self.display_comprehensive_results(predictions, confidence))
+        return True
 
-        def calculate_risk_step(self):
-                """Risk metrics calculation step"""
-                self.ai_agent.calculate_comprehensive_risk_metrics()
-                self.root.after(0, self.update_risk_display)
-                return True
+    def calculate_risk_step(self):
+        """Risk metrics calculation step"""
+        self.ai_agent.calculate_comprehensive_risk_metrics()
+        self.root.after(0, self.update_risk_display)
+        return True
 
-        def finalize_results_step(self):
-                """Finalize results step"""
-                self.root.after(0, self.update_performance_display)
-                return True
+    def finalize_results_step(self):
+        """Finalize results step"""
+        self.root.after(0, self.update_performance_display)
+        return True
 
-        def update_progress(self, message):
-                """Update progress display with professional formatting"""
+    def update_progress(self, message):
+        """Update progress display with professional formatting"""
+        try:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            progress_message = f"[{timestamp}] {message}\n"
+
+            def update_ui():
                 try:
-                    timestamp = datetime.now().strftime("%H:%M:%S")
-                    progress_message = f"[{timestamp}] {message}\n"
+                    self.progress_text.insert(tk.END, progress_message)
+                    self.progress_text.see(tk.END)
+                    self.root.update_idletasks()
+                except Exception as ui_error:
+                    print(f"UI Progress update failed: {ui_error}")
 
-                    def update_ui():
-                        try:
-                            self.progress_text.insert(tk.END, progress_message)
-                            self.progress_text.see(tk.END)
-                            self.root.update_idletasks()
-                        except Exception as ui_error:
-                            print(f"UI Progress update failed: {ui_error}")
+            self.root.after(0, update_ui)
+        except Exception as e:
+            print(f"Progress update error: {e}")
 
-                    self.root.after(0, update_ui)
-                except Exception as e:
-                    print(f"Progress update error: {e}")
+    def update_progress_percentage(self, percentage):
+        """Update progress percentage (placeholder for future enhancement)"""
+        # This could be used to show a progress bar percentage
+        pass
 
-        def update_progress_percentage(self, percentage):
-                """Update progress percentage (placeholder for future enhancement)"""
-                # This could be used to show a progress bar percentage
-                pass
+    def show_analysis_complete_dialog(self):
+        """Show analysis completion dialog with results summary"""
+        try:
+            # Calculate summary statistics
+            model_count = len(self.ai_agent.model_performance)
+            avg_performance = np.mean(list(self.ai_agent.model_performance.values())) if model_count > 0 else 0
 
-        def show_analysis_complete_dialog(self):
-                """Show analysis completion dialog with results summary"""
-                try:
-                    # Calculate summary statistics
-                    model_count = len(self.ai_agent.model_performance)
-                    avg_performance = np.mean(list(self.ai_agent.model_performance.values())) if model_count > 0 else 0
-
-                    completion_message = f"""🎉 ANALYSIS COMPLETED SUCCESSFULLY!
+            completion_message = f"""🎉 ANALYSIS COMPLETED SUCCESSFULLY!
             {'=' * 50}
 
             📊 Results Summary:
@@ -4857,238 +5440,429 @@ class ProfessionalSmartStockAIApp:
 
             Analysis completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"""
 
-                    messagebox.showinfo("Analysis Complete", completion_message)
+            messagebox.showinfo("Analysis Complete", completion_message)
 
-                    # Switch to predictions tab
-                    self.show_predictions_tab()
+            # Switch to predictions tab
+            self.show_predictions_tab()
 
-                except Exception as e:
-                    print(f"Error showing completion dialog: {e}")
+        except Exception as e:
+            print(f"Error showing completion dialog: {e}")
 
-        def display_comprehensive_results(self, predictions, confidence):
-                """Display comprehensive prediction results with professional formatting"""
-                self.predictions_text.delete(1.0, tk.END)
+    def display_comprehensive_results(self, predictions, confidence):
+            """Display comprehensive prediction results with SHAP explanations and SL/TP analysis"""
+            self.predictions_text.delete(1.0, tk.END)
 
-                # Professional header
-                result_text = f"""🚀 SMARTSTOCK AI - COMPREHENSIVE ANALYSIS RESULTS
-            {'=' * 80}
+            # Professional header
+            result_text = f"""🚀 SMARTSTOCK AI - COMPREHENSIVE ANALYSIS RESULTS
+        {'=' * 80}
 
-            📊 Analysis Summary Report
-            Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
-            User: {self.get_current_user()}
-            Data: {os.path.basename(self.csv_file_path) if self.csv_file_path else 'Sample Data'}
+        📊 Analysis Summary Report
+        Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+        User: {self.get_current_user()}
+        Data: {os.path.basename(self.csv_file_path) if self.csv_file_path else 'Sample Data'}
 
-            {'=' * 80}
+        {'=' * 80}
 
-            """
+        """
 
-                # Current market state
-                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
-                    current_price = self.ai_agent.data['Close'].iloc[-1]
-                    prev_price = self.ai_agent.data['Close'].iloc[-2] if len(self.ai_agent.data) > 1 else current_price
-                    daily_change = current_price - prev_price
-                    daily_change_pct = (daily_change / prev_price) * 100 if prev_price != 0 else 0
+            # Current market state
+            if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+                current_price = self.ai_agent.data['Close'].iloc[-1]
+                prev_price = self.ai_agent.data['Close'].iloc[-2] if len(self.ai_agent.data) > 1 else current_price
+                daily_change = current_price - prev_price
+                daily_change_pct = (daily_change / prev_price) * 100 if prev_price != 0 else 0
 
-                    trend_emoji = "📈" if daily_change > 0 else "📉" if daily_change < 0 else "➡️"
+                trend_emoji = "📈" if daily_change > 0 else "📉" if daily_change < 0 else "➡️"
 
-                    result_text += f"""📊 CURRENT MARKET STATE
-            {'-' * 50}
-            Current Price: ${current_price:.2f}
-            Daily Change: {trend_emoji} ${daily_change:+.2f} ({daily_change_pct:+.2f}%)
-            Market Trend: {getattr(self.ai_agent, 'market_trend', 'Unknown')}
-            Data Points Analyzed: {len(self.ai_agent.data):,}
+                result_text += f"""📊 CURRENT MARKET STATE
+        {'-' * 50}
+        Current Price: ${current_price:.2f}
+        Daily Change: {trend_emoji} ${daily_change:+.2f} ({daily_change_pct:+.2f}%)
+        Market Trend: {getattr(self.ai_agent, 'market_trend', 'Unknown')}
+        Data Points Analyzed: {len(self.ai_agent.data):,}
 
-            """
+        """
 
-                # ML Predictions Section
-                if predictions:
-                    result_text += f"""🤖 MACHINE LEARNING PREDICTIONS
-            {'-' * 50}
-            """
+            # ML Predictions Section
+            if predictions:
+                result_text += f"""🤖 MACHINE LEARNING PREDICTIONS
+        {'-' * 50}
+        """
 
-                    if 'price' in predictions:
-                        predicted_price = predictions['price']
-                        current_price = self.ai_agent.data['Close'].iloc[-1] if hasattr(self.ai_agent, 'data') else 0
-
-                        if current_price > 0:
-                            price_change = predicted_price - current_price
-                            price_change_pct = (price_change / current_price) * 100
-
-                            direction = "BULLISH 📈" if price_change > 0 else "BEARISH 📉" if price_change < 0 else "NEUTRAL ➡️"
-
-                            result_text += f"""Target Price: ${predicted_price:.2f}
-            Expected Change: ${price_change:+.2f} ({price_change_pct:+.2f}%)
-            Direction: {direction}
-            Model Confidence: {confidence.get('price', 0):.1%}
-
-            """
-
-                    if 'direction' in predictions:
-                        direction_prob = predictions['direction']
-                        direction = "STRONG BUY 🚀" if direction_prob > 0.7 else "BUY 📈" if direction_prob > 0.6 else "WEAK BUY ⬆️" if direction_prob > 0.55 else "STRONG SELL 📉" if direction_prob < 0.3 else "SELL ⬇️" if direction_prob < 0.4 else "WEAK SELL 📉" if direction_prob < 0.45 else "NEUTRAL ➡️"
-
-                        result_text += f"""Direction Signal: {direction}
-            Probability: {direction_prob:.1%}
-            Signal Strength: {"Strong" if abs(direction_prob - 0.5) > 0.2 else "Moderate" if abs(direction_prob - 0.5) > 0.1 else "Weak"}
-            Confidence: {confidence.get('direction', 0):.1%}
-
-            """
-
-                # Deep Learning Analysis
-                if 'deep_price' in predictions:
-                    result_text += f"""🧠 DEEP LEARNING ANALYSIS
-            {'-' * 50}
-            """
-
-                    deep_price = predictions['deep_price']
+                if 'price' in predictions:
+                    predicted_price = predictions['price']
                     current_price = self.ai_agent.data['Close'].iloc[-1] if hasattr(self.ai_agent, 'data') else 0
 
                     if current_price > 0:
-                        deep_change = deep_price - current_price
-                        deep_change_pct = (deep_change / current_price) * 100
+                        price_change = predicted_price - current_price
+                        price_change_pct = (price_change / current_price) * 100
 
-                        result_text += f"""LSTM Prediction: ${deep_price:.2f}
-            Neural Network Change: ${deep_change:+.2f} ({deep_change_pct:+.2f}%)
-            Deep Learning Confidence: {confidence.get('deep_price', 0):.1%}
+                        direction = "BULLISH 📈" if price_change > 0 else "BEARISH 📉" if price_change < 0 else "NEUTRAL ➡️"
 
-            """
+                        result_text += f"""Target Price: ${predicted_price:.2f}
+        Expected Change: ${price_change:+.2f} ({price_change_pct:+.2f}%)
+        Direction: {direction}
+        Model Confidence: {confidence.get('price', 0):.1%}
 
-                # Smart Money Analysis
-                if hasattr(self.ai_agent, 'smart_money_analysis') and self.ai_agent.smart_money_analysis:
-                    result_text += f"""💰 SMART MONEY ANALYSIS
-            {'-' * 50}
-            """
-                    smart_analysis = self.ai_agent.smart_money_analysis
+        """
 
-                    for key, value in smart_analysis.items():
-                        formatted_key = key.replace('_', ' ').title()
-                        if isinstance(value, float):
-                            result_text += f"{formatted_key}: {value:.1%}\n"
-                        else:
-                            result_text += f"{formatted_key}: {value}\n"
-                    result_text += "\n"
+                if 'direction' in predictions:
+                    direction_prob = predictions['direction']
+                    direction = "STRONG BUY 🚀" if direction_prob > 0.7 else "BUY 📈" if direction_prob > 0.6 else "WEAK BUY ⬆️" if direction_prob > 0.55 else "STRONG SELL 📉" if direction_prob < 0.3 else "SELL 📉" if direction_prob < 0.4 else "NEUTRAL ➡️"
 
-                # Technical Analysis Summary
-                result_text += f"""📈 TECHNICAL ANALYSIS SUMMARY
-            {'-' * 50}
-            """
+                    result_text += f"""Direction Signal: {direction}
+        Probability: {direction_prob:.1%}
+        Signal Strength: {"Strong" if abs(direction_prob - 0.5) > 0.2 else "Moderate" if abs(direction_prob - 0.5) > 0.1 else "Weak"}
+        Confidence: {confidence.get('direction', 0):.1%}
 
-                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
-                    # RSI Analysis
-                    if 'RSI_14' in self.ai_agent.data.columns:
-                        current_rsi = self.ai_agent.data['RSI_14'].iloc[-1]
-                        rsi_signal = "Oversold 🟢" if current_rsi < 30 else "Overbought 🔴" if current_rsi > 70 else "Neutral 🟡"
-                        result_text += f"RSI (14): {current_rsi:.1f} - {rsi_signal}\n"
+        """
 
-                    # MACD Analysis
-                    if 'MACD' in self.ai_agent.data.columns:
-                        macd_current = self.ai_agent.data['MACD'].iloc[-1]
-                        macd_signal = self.ai_agent.data['MACD_Signal'].iloc[-1]
-                        macd_trend = "Bullish 📈" if macd_current > macd_signal else "Bearish 📉"
-                        result_text += f"MACD: {macd_trend} (MACD: {macd_current:.3f}, Signal: {macd_signal:.3f})\n"
+            # Deep Learning Analysis
+            if 'deep_price' in predictions:
+                result_text += f"""🧠 DEEP LEARNING ANALYSIS
+        {'-' * 50}
+        """
 
-                    # Bollinger Bands Analysis
-                    if 'BB_Position' in self.ai_agent.data.columns:
-                        bb_position = self.ai_agent.data['BB_Position'].iloc[-1]
-                        bb_analysis = "Upper Band 🔴" if bb_position > 0.8 else "Lower Band 🟢" if bb_position < 0.2 else "Middle Range 🟡"
-                        result_text += f"Bollinger Bands: {bb_analysis} (Position: {bb_position:.2f})\n"
+                deep_price = predictions['deep_price']
+                current_price = self.ai_agent.data['Close'].iloc[-1] if hasattr(self.ai_agent, 'data') else 0
 
+                if current_price > 0:
+                    deep_change = deep_price - current_price
+                    deep_change_pct = (deep_change / current_price) * 100
+
+                    result_text += f"""LSTM Prediction: ${deep_price:.2f}
+        Neural Network Change: ${deep_change:+.2f} ({deep_change_pct:+.2f}%)
+        Deep Learning Confidence: {confidence.get('deep_price', 0):.1%}
+
+        """
+
+            # Smart Money Analysis
+            if hasattr(self.ai_agent, 'smart_money_analysis') and self.ai_agent.smart_money_analysis:
+                result_text += f"""💰 SMART MONEY ANALYSIS
+        {'-' * 50}
+        """
+                smart_analysis = self.ai_agent.smart_money_analysis
+
+                for key, value in smart_analysis.items():
+                    formatted_key = key.replace('_', ' ').title()
+                    if isinstance(value, float):
+                        result_text += f"{formatted_key}: {value:.1%}\n"
+                    else:
+                        result_text += f"{formatted_key}: {value}\n"
                 result_text += "\n"
 
-                # Model Performance Summary
-                if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
-                    result_text += f"""🏆 MODEL PERFORMANCE SUMMARY
-            {'-' * 50}
-            """
-                    for model_name, performance in self.ai_agent.model_performance.items():
-                        stars = "⭐" * min(5, int(performance * 5))
-                        result_text += f"{model_name.upper()}: {performance:.1%} {stars}\n"
+            # Technical Analysis Summary - FIXED VERSION
+            result_text += f"""📈 TECHNICAL ANALYSIS SUMMARY
+        {'-' * 50}
+        """
 
-                # Trading Recommendations
+            # CORRECTED: Check if technical indicators were calculated and exist
+            if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+                technical_indicators_found = False
+
+                # RSI Analysis - SAFE CHECK
+                if 'RSI_14' in self.ai_agent.data.columns:
+                    try:
+                        current_rsi = self.ai_agent.data['RSI_14'].iloc[-1]
+                        if not pd.isna(current_rsi):  # Check for NaN values
+                            rsi_signal = "Oversold 🟢" if current_rsi < 30 else "Overbought 🔴" if current_rsi > 70 else "Neutral 🟡"
+                            result_text += f"RSI (14): {current_rsi:.1f} - {rsi_signal}\n"
+                            technical_indicators_found = True
+                    except (IndexError, KeyError):
+                        pass  # Skip if data not available
+
+                # MACD Analysis - SAFE CHECK
+                if all(col in self.ai_agent.data.columns for col in ['MACD', 'MACD_Signal']):
+                    try:
+                        macd_current = self.ai_agent.data['MACD'].iloc[-1]
+                        macd_signal = self.ai_agent.data['MACD_Signal'].iloc[-1]
+                        if not (pd.isna(macd_current) or pd.isna(macd_signal)):
+                            macd_trend = "Bullish 📈" if macd_current > macd_signal else "Bearish 📉"
+                            result_text += f"MACD: {macd_trend} (MACD: {macd_current:.3f}, Signal: {macd_signal:.3f})\n"
+                            technical_indicators_found = True
+                    except (IndexError, KeyError):
+                        pass  # Skip if data not available
+
+                # Bollinger Bands Analysis - SAFE CHECK
+                if 'BB_Position' in self.ai_agent.data.columns:
+                    try:
+                        bb_position = self.ai_agent.data['BB_Position'].iloc[-1]
+                        if not pd.isna(bb_position):
+                            bb_analysis = "Upper Band 🔴" if bb_position > 0.8 else "Lower Band 🟢" if bb_position < 0.2 else "Middle Range 🟡"
+                            result_text += f"Bollinger Bands: {bb_analysis} (Position: {bb_position:.2f})\n"
+                            technical_indicators_found = True
+                    except (IndexError, KeyError):
+                        pass  # Skip if data not available
+
+                # If no technical indicators were found, show appropriate message
+                if not technical_indicators_found:
+                    result_text += "Technical indicators not yet calculated or not available.\n"
+                    result_text += "Complete the full analysis to generate technical indicators.\n"
+
+            else:
+                result_text += "No market data available for technical analysis.\n"
+
+            result_text += "\n"
+
+            # SHAP Explainability Section - NEW
+            if hasattr(self.ai_agent, 'model_explanations') and self.ai_agent.model_explanations:
+                result_text += f"""🔍 MODEL EXPLAINABILITY (SHAP ANALYSIS)
+        {'-' * 50}
+
+        AI Decision Transparency - Why These Predictions:
+        """
+
+                for model_name, explanation in self.ai_agent.model_explanations.items():
+                    result_text += f"\n{explanation}\n"
+            else:
+                result_text += f"""🔍 MODEL EXPLAINABILITY (SHAP ANALYSIS)
+        {'-' * 50}
+        SHAP model explanations will be available after completing the full analysis.
+        This provides transparency into AI decision-making processes.
+
+        """
+
+            # Advanced SL/TP Analysis Section - NEW
+            if hasattr(self.ai_agent, 'sl_tp_analysis') and self.ai_agent.sl_tp_analysis:
+                sl_tp = self.ai_agent.sl_tp_analysis
                 result_text += f"""
 
-            🎯 TRADING RECOMMENDATIONS
-            {'-' * 50}
-            """
+        🎯 ADVANCED STOP LOSS / TAKE PROFIT ANALYSIS
+        {'-' * 50}
+        Optimal Entry Price: ${sl_tp.get('entry_price', 0):.2f}
+        Recommended Stop Loss: ${sl_tp.get('stop_loss', 0):.2f}
+        Recommended Take Profit: ${sl_tp.get('take_profit', 0):.2f}
 
-                if predictions and 'direction' in predictions:
-                    direction_prob = predictions['direction']
+        Risk/Reward Ratio: {sl_tp.get('risk_reward_ratio', 0):.2f}:1
+        Expected Value: ${sl_tp.get('expected_value', 0):.2f}
+        Probability of Success: {sl_tp.get('probability_take_profit', 0):.1%}
 
-                    if direction_prob > 0.7:
-                        result_text += """🚀 STRONG BUY SIGNAL
-            • High probability upward movement detected
-            • Consider entering long position
-            • Use tight stop-loss for risk management
-            • Monitor for confirmation signals
+        💡 This analysis uses Monte Carlo simulation with {sl_tp.get('monte_carlo_simulations', 0):,} scenarios
+        """
+            else:
+                result_text += f"""
 
-            """
-                    elif direction_prob > 0.6:
-                        result_text += """📈 MODERATE BUY SIGNAL
-            • Positive momentum indicated
-            • Consider gradual position building
-            • Wait for additional confirmation
-            • Implement proper risk controls
+        🎯 ADVANCED STOP LOSS / TAKE PROFIT ANALYSIS
+        {'-' * 50}
+        Advanced SL/TP analysis will be available after completing predictions.
+        Use the 'Advanced Risk & SL/TP' tab to calculate optimal levels.
 
-            """
-                    elif direction_prob < 0.3:
-                        result_text += """📉 STRONG SELL SIGNAL
-            • High probability downward movement
-            • Consider exiting long positions
-            • Potential short opportunity (if applicable)
-            • Implement protective stops
+        """
 
-            """
-                    elif direction_prob < 0.4:
-                        result_text += """⬇️ MODERATE SELL SIGNAL
-            • Negative momentum building
-            • Reduce position sizes
-            • Monitor for reversal signals
-            • Maintain defensive posture
+            # Monte Carlo Risk Assessment - NEW
+            if hasattr(self.ai_agent, 'monte_carlo_analysis') and self.ai_agent.monte_carlo_analysis:
+                mc_results = self.ai_agent.monte_carlo_analysis
+                if 'base_case' in mc_results:
+                    base_case = mc_results['base_case']
+                    result_text += f"""
 
-            """
-                    else:
-                        result_text += """➡️ NEUTRAL SIGNAL
-            • Mixed signals detected
-            • Consider range trading strategies
-            • Wait for clearer directional bias
-            • Focus on risk management
+        🎲 MONTE CARLO RISK ASSESSMENT
+        {'-' * 50}
+        Base Case Scenario:
+        • Expected Price (30 days): ${base_case.get('mean_final_price', 0):.2f}
+        • 95% Confidence Range: ${base_case.get('var_95', 0):.2f} - ${base_case.get('upside_95', 0):.2f}
+        • Probability of Profit: {base_case.get('prob_profit', 0):.1%}
+        • Expected Return: {base_case.get('expected_return', 0):.1%}
 
-            """
+        📊 Risk scenarios analyzed: {len(mc_results)} scenarios with 10,000 simulations each
+        """
+            else:
+                result_text += f"""
 
-                # Risk Assessment Preview
-                result_text += f"""⚠️ RISK ASSESSMENT PREVIEW
-            {'-' * 50}
-            Position Size Recommendation: {self.position_size.get():.1f}% of portfolio
-            Risk Profile: {self.risk_tolerance.get().title()}
-            Suggested Stop Loss: {self.stop_loss.get():.1f}%
+        🎲 MONTE CARLO RISK ASSESSMENT
+        {'-' * 50}
+        Monte Carlo risk assessment will be available after completing analysis.
+        This provides comprehensive scenario analysis for risk management.
 
-            📊 For detailed risk analysis, check the Risk Management tab.
+        """
 
-            """
+            # Model Performance Summary
+            if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
+                result_text += f"""🏆 MODEL PERFORMANCE SUMMARY
+        {'-' * 50}
+        """
+                for model_name, performance in self.ai_agent.model_performance.items():
+                    stars = "⭐" * min(5, int(performance * 5))
+                    result_text += f"{model_name.upper().replace('_', ' '):<25}: {performance:.1%} {stars}\n"
+            else:
+                result_text += f"""🏆 MODEL PERFORMANCE SUMMARY
+        {'-' * 50}
+        Model performance metrics will be available after training completion.
 
-                # Disclaimer
-                result_text += f"""📋 IMPORTANT DISCLAIMER
-            {'-' * 50}
-            • This analysis is for educational and informational purposes only
-            • Past performance does not guarantee future results
-            • Always implement proper risk management strategies
-            • Consider consulting with financial advisors
-            • Never invest more than you can afford to lose
+        """
 
-            Analysis generated by SmartStock AI v2.0 Professional
-            Report ID: {datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}
-            """
+            # Trading Recommendations
+            result_text += f"""
 
-                self.predictions_text.insert(tk.END, result_text)
+        🎯 TRADING RECOMMENDATIONS
+        {'-' * 50}
+        """
 
-                # Update detailed predictions
-                self.update_detailed_predictions(predictions, confidence)
+            if predictions and 'direction' in predictions:
+                direction_prob = predictions['direction']
 
-        def update_detailed_predictions(self, predictions, confidence):
-                """Update detailed predictions tab with technical analysis"""
-                self.detailed_predictions.delete(1.0, tk.END)
+                if direction_prob > 0.7:
+                    result_text += """🚀 STRONG BUY SIGNAL
+        • High probability upward movement detected
+        • Consider entering long position
+        • Use tight stop-loss for risk management
+        • Monitor for confirmation signals
 
-                detailed_text = f"""🔬 DETAILED PREDICTION ANALYSIS
+        """
+                elif direction_prob > 0.6:
+                    result_text += """📈 MODERATE BUY SIGNAL
+        • Positive momentum indicated
+        • Consider gradual position building
+        • Wait for additional confirmation
+        • Implement proper risk controls
+
+        """
+                elif direction_prob < 0.3:
+                    result_text += """📉 STRONG SELL SIGNAL
+        • High probability downward movement
+        • Consider exiting long positions
+        • Potential short opportunity (if applicable)
+        • Implement protective stops
+
+        """
+                elif direction_prob < 0.4:
+                    result_text += """⬇️ MODERATE SELL SIGNAL
+        • Negative momentum building
+        • Reduce position sizes
+        • Monitor for reversal signals
+        • Maintain defensive posture
+
+        """
+                else:
+                    result_text += """➡️ NEUTRAL SIGNAL
+        • Mixed signals detected
+        • Consider range trading strategies
+        • Wait for clearer directional bias
+        • Focus on risk management
+
+        """
+            else:
+                result_text += """📊 AWAITING ANALYSIS COMPLETION
+        • Complete the full analysis to receive trading recommendations
+        • Upload data and configure analysis parameters
+        • Run comprehensive analysis for detailed signals
+
+        """
+
+            # Risk Assessment Preview
+            result_text += f"""⚠️ RISK ASSESSMENT PREVIEW
+        {'-' * 50}
+        Position Size Recommendation: {self.position_size.get():.1f}% of portfolio
+        Risk Profile: {self.risk_tolerance.get().title()}
+        Suggested Stop Loss: {self.stop_loss.get():.1f}%
+
+        📊 For detailed risk analysis, check the Risk Management tabs.
+
+        """
+
+            # Disclaimer
+            result_text += f"""📋 IMPORTANT DISCLAIMER
+        {'-' * 50}
+        • This analysis is for educational and informational purposes only
+        • Past performance does not guarantee future results
+        • Always implement proper risk management strategies
+        • Consider consulting with financial advisors
+        • Never invest more than you can afford to lose
+
+        Analysis generated by SmartStock AI v2.0 Professional
+        Report ID: {datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}
+        """
+
+            self.predictions_text.insert(tk.END, result_text)
+
+            # Update detailed predictions
+            self.update_detailed_predictions(predictions, confidence)
+
+            # Update SHAP display if available
+            self.update_shap_display()
+
+    def update_shap_display(self):
+            """Update SHAP explainability display"""
+            if not hasattr(self, 'shap_text'):
+                return
+
+            self.shap_text.delete(1.0, tk.END)
+
+            if SHAP_AVAILABLE and hasattr(self.ai_agent, 'model_explanations') and self.ai_agent.model_explanations:
+                display_text = f"""🔍 SHAP MODEL EXPLAINABILITY ANALYSIS
+    {'=' * 70}
+
+    Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+    Analysis Type: SHapley Additive exPlanations (SHAP)
+    Models Analyzed: {len(self.ai_agent.model_explanations)}
+
+    📊 TRANSPARENCY IN AI DECISION MAKING
+    {'-' * 50}
+
+    SHAP provides mathematical explanations for each prediction by:
+    • Calculating the contribution of each feature to the final prediction
+    • Ensuring explanations sum to the difference between prediction and baseline
+    • Providing both local (individual prediction) and global (model behavior) insights
+    • Enabling transparent and interpretable AI decision making
+
+    """
+
+                # Add individual model explanations
+                for model_name, explanation in self.ai_agent.model_explanations.items():
+                    display_text += f"\n{explanation}\n{'-' * 60}\n"
+
+                display_text += f"""
+
+    💡 INTERPRETATION GUIDE
+    {'-' * 50}
+    • Higher SHAP values indicate stronger positive influence on prediction
+    • Negative SHAP values indicate features pushing prediction lower
+    • Sum of all SHAP values equals difference from baseline prediction
+    • Feature ranking shows relative importance for this specific prediction
+
+    🎯 ACTIONABLE INSIGHTS
+    {'-' * 50}
+    • Monitor top contributing features for market changes
+    • Understand which indicators drive model decisions
+    • Validate model logic against market knowledge
+    • Use explanations to build confidence in AI predictions
+
+    ⚠️ IMPORTANT NOTES
+    {'-' * 50}
+    • SHAP values are specific to current market conditions
+    • Feature importance may change over time
+    • Use explanations alongside traditional analysis
+    • Model transparency enhances but doesn't replace human judgment
+
+    📅 Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+    🔄 Refresh: Explanations update with each new analysis
+    """
+
+                self.shap_text.insert(tk.END, display_text)
+
+                # Update status
+                self.shap_status_label.config(
+                    text=f"✅ SHAP Analysis Complete!\n\n"
+                         f"• {len(self.ai_agent.model_explanations)} models analyzed\n"
+                         f"• Feature contributions calculated\n"
+                         f"• Model transparency achieved\n"
+                         f"• Decision explanations available\n\n"
+                         f"Last updated: {datetime.now().strftime('%H:%M:%S UTC')}"
+                )
+            else:
+                self.shap_text.insert(tk.END,
+                                      "🔍 SHAP explainability analysis not available.\n\n"
+                                      "Possible reasons:\n"
+                                      "• SHAP library not installed (pip install shap)\n"
+                                      "• Analysis not yet completed\n"
+                                      "• No compatible models trained\n\n"
+                                      "Complete the analysis to generate model explanations.")
+
+    def update_detailed_predictions(self, predictions, confidence):
+        """Update detailed predictions tab with technical analysis"""
+        self.detailed_predictions.delete(1.0, tk.END)
+
+        detailed_text = f"""🔬 DETAILED PREDICTION ANALYSIS
             {'=' * 80}
 
             Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
@@ -5096,24 +5870,24 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Model-by-model breakdown
-                detailed_text += f"""📊 MODEL-BY-MODEL ANALYSIS
+        # Model-by-model breakdown
+        detailed_text += f"""📊 MODEL-BY-MODEL ANALYSIS
             {'-' * 60}
 
             """
 
-                for model_name, prediction in predictions.items():
-                    detailed_text += f"""🤖 {model_name.upper().replace('_', ' ')} MODEL
+        for model_name, prediction in predictions.items():
+            detailed_text += f"""🤖 {model_name.upper().replace('_', ' ')} MODEL
             {'-' * 40}
             """
 
-                    if isinstance(prediction, (int, float)):
-                        detailed_text += f"Prediction Value: {prediction:.6f}\n"
-                        detailed_text += f"Confidence Level: {confidence.get(model_name, 0):.3%}\n"
+            if isinstance(prediction, (int, float)):
+                detailed_text += f"Prediction Value: {prediction:.6f}\n"
+                detailed_text += f"Confidence Level: {confidence.get(model_name, 0):.3%}\n"
 
-                        # Add model-specific insights
-                        if 'rf' in model_name.lower():
-                            detailed_text += """Model Type: Random Forest Ensemble
+                # Add model-specific insights
+                if 'rf' in model_name.lower():
+                    detailed_text += """Model Type: Random Forest Ensemble
             Strengths: 
             • Excellent handling of non-linear patterns
             • Robust against overfitting
@@ -5127,8 +5901,8 @@ class ProfessionalSmartStockAIApp:
             • Interpretable feature relationships
 
             """
-                        elif 'xgb' in model_name.lower():
-                            detailed_text += """Model Type: XGBoost Gradient Boosting
+                elif 'xgb' in model_name.lower():
+                    detailed_text += """Model Type: XGBoost Gradient Boosting
             Strengths:
             • High accuracy and performance
             • Advanced regularization techniques
@@ -5142,8 +5916,8 @@ class ProfessionalSmartStockAIApp:
             • Industry-standard performance
 
             """
-                        elif 'lgb' in model_name.lower():
-                            detailed_text += """Model Type: LightGBM Fast Gradient Boosting
+                elif 'lgb' in model_name.lower():
+                    detailed_text += """Model Type: LightGBM Fast Gradient Boosting
             Strengths:
             • Faster training than XGBoost
             • Lower memory consumption
@@ -5157,8 +5931,8 @@ class ProfessionalSmartStockAIApp:
             • Optimized for speed and memory
 
             """
-                        elif 'catboost' in model_name.lower() or 'cb' in model_name.lower():
-                            detailed_text += """Model Type: CatBoost Categorical Boosting
+                elif 'catboost' in model_name.lower() or 'cb' in model_name.lower():
+                    detailed_text += """Model Type: CatBoost Categorical Boosting
             Strengths:
             • Superior categorical feature handling
             • Minimal hyperparameter tuning required
@@ -5172,8 +5946,8 @@ class ProfessionalSmartStockAIApp:
             • Robust default parameters
 
             """
-                        elif 'lstm' in model_name.lower() or 'deep' in model_name.lower():
-                            detailed_text += """Model Type: Deep Learning Neural Network
+                elif 'lstm' in model_name.lower() or 'deep' in model_name.lower():
+                    detailed_text += """Model Type: Deep Learning Neural Network
             Strengths:
             • Captures complex temporal patterns
             • Memory of long-term dependencies
@@ -5187,8 +5961,8 @@ class ProfessionalSmartStockAIApp:
             • Advanced pattern recognition
 
             """
-                        elif 'voting' in model_name.lower():
-                            detailed_text += """Model Type: Voting Ensemble
+                elif 'voting' in model_name.lower():
+                    detailed_text += """Model Type: Voting Ensemble
             Strengths:
             • Combines multiple model predictions
             • Reduces prediction variance
@@ -5202,8 +5976,8 @@ class ProfessionalSmartStockAIApp:
             • Increased reliability
 
             """
-                        elif 'stacking' in model_name.lower():
-                            detailed_text += """Model Type: Stacking Ensemble
+                elif 'stacking' in model_name.lower():
+                    detailed_text += """Model Type: Stacking Ensemble
             Strengths:
             • Meta-model learns optimal combinations
             • Higher accuracy than simple averaging
@@ -5218,25 +5992,25 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Prediction convergence analysis
-                if len(predictions) > 1:
-                    detailed_text += f"""🎯 MODEL CONVERGENCE ANALYSIS
+        # Prediction convergence analysis
+        if len(predictions) > 1:
+            detailed_text += f"""🎯 MODEL CONVERGENCE ANALYSIS
             {'-' * 60}
 
             """
 
-                    price_predictions = [v for k, v in predictions.items() if
-                                         'price' in k.lower() and isinstance(v, (int, float))]
-                    if len(price_predictions) > 1:
-                        mean_pred = np.mean(price_predictions)
-                        std_pred = np.std(price_predictions)
-                        min_pred = min(price_predictions)
-                        max_pred = max(price_predictions)
-                        cv = std_pred / mean_pred if mean_pred != 0 else 0
+            price_predictions = [v for k, v in predictions.items() if
+                                 'price' in k.lower() and isinstance(v, (int, float))]
+            if len(price_predictions) > 1:
+                mean_pred = np.mean(price_predictions)
+                std_pred = np.std(price_predictions)
+                min_pred = min(price_predictions)
+                max_pred = max(price_predictions)
+                cv = std_pred / mean_pred if mean_pred != 0 else 0
 
-                        convergence = "High" if cv < 0.02 else "Medium" if cv < 0.05 else "Low"
+                convergence = "High" if cv < 0.02 else "Medium" if cv < 0.05 else "Low"
 
-                        detailed_text += f"""Prediction Convergence: {convergence} Consensus
+                detailed_text += f"""Prediction Convergence: {convergence} Consensus
             Mean Prediction: ${mean_pred:.2f}
             Standard Deviation: ${std_pred:.2f}
             Coefficient of Variation: {cv:.1%}
@@ -5246,38 +6020,38 @@ class ProfessionalSmartStockAIApp:
             Interpretation:
             """
 
-                        if convergence == "High":
-                            detailed_text += "• Strong model agreement indicates high confidence\n"
-                            detailed_text += "• Predictions are closely aligned\n"
-                            detailed_text += "• Low uncertainty in forecast\n"
-                        elif convergence == "Medium":
-                            detailed_text += "• Moderate model agreement\n"
-                            detailed_text += "• Some variation in predictions\n"
-                            detailed_text += "• Normal level of uncertainty\n"
-                        else:
-                            detailed_text += "• Low model agreement indicates high uncertainty\n"
-                            detailed_text += "• Significant variation in predictions\n"
-                            detailed_text += "• Exercise caution in decision making\n"
+                if convergence == "High":
+                    detailed_text += "• Strong model agreement indicates high confidence\n"
+                    detailed_text += "• Predictions are closely aligned\n"
+                    detailed_text += "• Low uncertainty in forecast\n"
+                elif convergence == "Medium":
+                    detailed_text += "• Moderate model agreement\n"
+                    detailed_text += "• Some variation in predictions\n"
+                    detailed_text += "• Normal level of uncertainty\n"
+                else:
+                    detailed_text += "• Low model agreement indicates high uncertainty\n"
+                    detailed_text += "• Significant variation in predictions\n"
+                    detailed_text += "• Exercise caution in decision making\n"
 
-                        detailed_text += "\n"
+                detailed_text += "\n"
 
-                # Time series characteristics
-                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
-                    detailed_text += f"""📈 TIME SERIES CHARACTERISTICS
+        # Time series characteristics
+        if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+            detailed_text += f"""📈 TIME SERIES CHARACTERISTICS
             {'-' * 60}
 
             """
 
-                    returns = self.ai_agent.data['Close'].pct_change().dropna()
+            returns = self.ai_agent.data['Close'].pct_change().dropna()
 
-                    if len(returns) > 0:
-                        mean_return = returns.mean()
-                        daily_vol = returns.std()
-                        annual_vol = daily_vol * np.sqrt(252)
-                        skewness = returns.skew()
-                        kurtosis = returns.kurtosis()
+            if len(returns) > 0:
+                mean_return = returns.mean()
+                daily_vol = returns.std()
+                annual_vol = daily_vol * np.sqrt(252)
+                skewness = returns.skew()
+                kurtosis = returns.kurtosis()
 
-                        detailed_text += f"""Return Statistics:
+                detailed_text += f"""Return Statistics:
             • Mean Daily Return: {mean_return:.4%}
             • Daily Volatility: {daily_vol:.4%}
             • Annualized Volatility: {annual_vol:.1%}
@@ -5286,71 +6060,71 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                        # Autocorrelation analysis
-                        if len(returns) > 5:
-                            autocorr_1 = returns.autocorr(lag=1)
-                            autocorr_5 = returns.autocorr(lag=5)
+                # Autocorrelation analysis
+                if len(returns) > 5:
+                    autocorr_1 = returns.autocorr(lag=1)
+                    autocorr_5 = returns.autocorr(lag=5)
 
-                            detailed_text += f"""Autocorrelation Analysis:
+                    detailed_text += f"""Autocorrelation Analysis:
             • 1-day Autocorrelation: {autocorr_1:.3f}
             • 5-day Autocorrelation: {autocorr_5:.3f}
 
             """
 
-                            if abs(autocorr_1) > 0.1:
-                                trend_behavior = "Trending (momentum effects)" if autocorr_1 > 0 else "Mean Reverting"
-                            else:
-                                trend_behavior = "Random Walk (efficient market)"
+                    if abs(autocorr_1) > 0.1:
+                        trend_behavior = "Trending (momentum effects)" if autocorr_1 > 0 else "Mean Reverting"
+                    else:
+                        trend_behavior = "Random Walk (efficient market)"
 
-                            detailed_text += f"Series Behavior: {trend_behavior}\n\n"
+                    detailed_text += f"Series Behavior: {trend_behavior}\n\n"
 
-                        # Distribution analysis
-                        detailed_text += f"""Distribution Characteristics:
+                # Distribution analysis
+                detailed_text += f"""Distribution Characteristics:
             """
 
-                        if abs(skewness) > 0.5:
-                            skew_desc = "Positive skew (right tail)" if skewness > 0 else "Negative skew (left tail)"
-                        else:
-                            skew_desc = "Approximately symmetric"
+                if abs(skewness) > 0.5:
+                    skew_desc = "Positive skew (right tail)" if skewness > 0 else "Negative skew (left tail)"
+                else:
+                    skew_desc = "Approximately symmetric"
 
-                        if kurtosis > 3:
-                            kurt_desc = "Heavy tails (high kurtosis)"
-                        elif kurtosis < 1:
-                            kurt_desc = "Light tails (low kurtosis)"
-                        else:
-                            kurt_desc = "Normal tails"
+                if kurtosis > 3:
+                    kurt_desc = "Heavy tails (high kurtosis)"
+                elif kurtosis < 1:
+                    kurt_desc = "Light tails (low kurtosis)"
+                else:
+                    kurt_desc = "Normal tails"
 
-                        detailed_text += f"• {skew_desc}\n"
-                        detailed_text += f"• {kurt_desc}\n"
-                        detailed_text += f"• {'Fat tail risk present' if kurtosis > 5 else 'Normal tail risk'}\n\n"
+                detailed_text += f"• {skew_desc}\n"
+                detailed_text += f"• {kurt_desc}\n"
+                detailed_text += f"• {'Fat tail risk present' if kurtosis > 5 else 'Normal tail risk'}\n\n"
 
-                # Market regime analysis
-                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
-                    detailed_text += f"""🌊 MARKET REGIME ANALYSIS
+        # Market regime analysis
+        if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+            detailed_text += f"""🌊 MARKET REGIME ANALYSIS
             {'-' * 60}
 
             """
 
-                    # Volatility regime analysis
-                    if 'Close' in self.ai_agent.data.columns:
-                        vol_20 = self.ai_agent.data['Close'].pct_change().rolling(20).std()
-                        current_vol = vol_20.iloc[-1] if len(vol_20) > 0 else 0
-                        avg_vol = vol_20.mean() if len(vol_20) > 0 else 0
+            # Volatility regime analysis
+            if 'Close' in self.ai_agent.data.columns:
+                vol_20 = self.ai_agent.data['Close'].pct_change().rolling(20).std()
+                current_vol = vol_20.iloc[-1] if len(vol_20) > 0 else 0
+                avg_vol = vol_20.mean() if len(vol_20) > 0 else 0
 
-                        if avg_vol > 0:
-                            vol_ratio = current_vol / avg_vol
+                if avg_vol > 0:
+                    vol_ratio = current_vol / avg_vol
 
-                            if vol_ratio > 1.5:
-                                regime = "High Volatility Regime 🔴"
-                                regime_desc = "• Market experiencing elevated uncertainty\n• Increased risk and opportunity\n• Consider defensive positioning"
-                            elif vol_ratio < 0.7:
-                                regime = "Low Volatility Regime 🟢"
-                                regime_desc = "• Market in calm period\n• Reduced risk environment\n• Potential for volatility expansion"
-                            else:
-                                regime = "Normal Volatility Regime 🟡"
-                                regime_desc = "• Market in typical volatility range\n• Standard risk levels\n• Normal trading conditions"
+                    if vol_ratio > 1.5:
+                        regime = "High Volatility Regime 🔴"
+                        regime_desc = "• Market experiencing elevated uncertainty\n• Increased risk and opportunity\n• Consider defensive positioning"
+                    elif vol_ratio < 0.7:
+                        regime = "Low Volatility Regime 🟢"
+                        regime_desc = "• Market in calm period\n• Reduced risk environment\n• Potential for volatility expansion"
+                    else:
+                        regime = "Normal Volatility Regime 🟡"
+                        regime_desc = "• Market in typical volatility range\n• Standard risk levels\n• Normal trading conditions"
 
-                            detailed_text += f"""Current Regime: {regime}
+                    detailed_text += f"""Current Regime: {regime}
             Current Volatility: {current_vol:.4f} ({current_vol * 100:.2f}%)
             Average Volatility: {avg_vol:.4f} ({avg_vol * 100:.2f}%)
             Volatility Ratio: {vol_ratio:.2f}x
@@ -5360,43 +6134,43 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Feature importance analysis
-                if hasattr(self.ai_agent, 'feature_importance') and self.ai_agent.feature_importance:
-                    detailed_text += f"""🔍 KEY MARKET DRIVERS
+        # Feature importance analysis
+        if hasattr(self.ai_agent, 'feature_importance') and self.ai_agent.feature_importance:
+            detailed_text += f"""🔍 KEY MARKET DRIVERS
             {'-' * 60}
 
             """
 
-                    if 'price' in self.ai_agent.feature_importance:
-                        importance = self.ai_agent.feature_importance['price']
-                        sorted_features = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:10]
+            if 'price' in self.ai_agent.feature_importance:
+                importance = self.ai_agent.feature_importance['price']
+                sorted_features = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:10]
 
-                        detailed_text += "Top 10 Most Influential Factors:\n\n"
+                detailed_text += "Top 10 Most Influential Factors:\n\n"
 
-                        for i, (feature, score) in enumerate(sorted_features, 1):
-                            clean_name = feature.replace('_', ' ').title()
-                            bar_length = int(score * 20)  # Scale for visual bar
-                            bar = "█" * bar_length + "░" * (20 - bar_length)
-                            detailed_text += f"{i:2d}. {clean_name:<25} {bar} {score:.4f}\n"
+                for i, (feature, score) in enumerate(sorted_features, 1):
+                    clean_name = feature.replace('_', ' ').title()
+                    bar_length = int(score * 20)  # Scale for visual bar
+                    bar = "█" * bar_length + "░" * (20 - bar_length)
+                    detailed_text += f"{i:2d}. {clean_name:<25} {bar} {score:.4f}\n"
 
-                        detailed_text += "\nFeature Importance Interpretation:\n"
-                        detailed_text += "• Higher scores indicate stronger predictive power\n"
-                        detailed_text += "• Top features drive most of the prediction\n"
-                        detailed_text += "• Monitor these indicators for market changes\n\n"
+                detailed_text += "\nFeature Importance Interpretation:\n"
+                detailed_text += "• Higher scores indicate stronger predictive power\n"
+                detailed_text += "• Top features drive most of the prediction\n"
+                detailed_text += "• Monitor these indicators for market changes\n\n"
 
-                # Prediction uncertainty analysis
-                detailed_text += f"""🎲 PREDICTION UNCERTAINTY ANALYSIS
+        # Prediction uncertainty analysis
+        detailed_text += f"""🎲 PREDICTION UNCERTAINTY ANALYSIS
             {'-' * 60}
 
             """
 
-                confidence_values = list(confidence.values())
-                if confidence_values:
-                    avg_confidence = np.mean(confidence_values)
-                    min_confidence = min(confidence_values)
-                    max_confidence = max(confidence_values)
+        confidence_values = list(confidence.values())
+        if confidence_values:
+            avg_confidence = np.mean(confidence_values)
+            min_confidence = min(confidence_values)
+            max_confidence = max(confidence_values)
 
-                    detailed_text += f"""Overall Confidence Metrics:
+            detailed_text += f"""Overall Confidence Metrics:
             • Average Confidence: {avg_confidence:.1%}
             • Minimum Confidence: {min_confidence:.1%}
             • Maximum Confidence: {max_confidence:.1%}
@@ -5404,24 +6178,24 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                    if avg_confidence > 0.8:
-                        uncertainty_level = "Low Uncertainty 🟢"
-                        uncertainty_desc = "• High model confidence\n• Predictions are reliable\n• Good conditions for decision making"
-                    elif avg_confidence > 0.6:
-                        uncertainty_level = "Moderate Uncertainty 🟡"
-                        uncertainty_desc = "• Reasonable model confidence\n• Normal prediction reliability\n• Standard caution recommended"
-                    else:
-                        uncertainty_level = "High Uncertainty 🔴"
-                        uncertainty_desc = "• Low model confidence\n• Uncertain prediction environment\n• Exercise extreme caution"
+            if avg_confidence > 0.8:
+                uncertainty_level = "Low Uncertainty 🟢"
+                uncertainty_desc = "• High model confidence\n• Predictions are reliable\n• Good conditions for decision making"
+            elif avg_confidence > 0.6:
+                uncertainty_level = "Moderate Uncertainty 🟡"
+                uncertainty_desc = "• Reasonable model confidence\n• Normal prediction reliability\n• Standard caution recommended"
+            else:
+                uncertainty_level = "High Uncertainty 🔴"
+                uncertainty_desc = "• Low model confidence\n• Uncertain prediction environment\n• Exercise extreme caution"
 
-                    detailed_text += f"""Uncertainty Assessment: {uncertainty_level}
+            detailed_text += f"""Uncertainty Assessment: {uncertainty_level}
 
             {uncertainty_desc}
 
             """
 
-                # Recommendations for improvement
-                detailed_text += f"""💡 RECOMMENDATIONS FOR ENHANCED ANALYSIS
+        # Recommendations for improvement
+        detailed_text += f"""💡 RECOMMENDATIONS FOR ENHANCED ANALYSIS
             {'-' * 60}
 
             Data Enhancement:
@@ -5444,8 +6218,8 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Technical notes
-                detailed_text += f"""📋 TECHNICAL NOTES
+        # Technical notes
+        detailed_text += f"""📋 TECHNICAL NOTES
             {'-' * 60}
 
             Model Training Details:
@@ -5466,47 +6240,47 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                self.detailed_predictions.insert(tk.END, detailed_text)
+        self.detailed_predictions.insert(tk.END, detailed_text)
 
-        def update_performance_display(self):
-                """Update model performance display with enhanced metrics"""
-                # Clear existing items
-                for item in self.performance_tree.get_children():
-                    self.performance_tree.delete(item)
+    def update_performance_display(self):
+        """Update model performance display with enhanced metrics"""
+        # Clear existing items
+        for item in self.performance_tree.get_children():
+            self.performance_tree.delete(item)
 
-                # Add performance data with professional formatting
-                if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
-                    for model_name, performance in self.ai_agent.model_performance.items():
-                        # Calculate additional metrics (placeholder - would be calculated during training)
-                        mae = getattr(self.ai_agent, f'{model_name}_mae', 'N/A')
-                        rmse = getattr(self.ai_agent, f'{model_name}_rmse', 'N/A')
-                        training_time = getattr(self.ai_agent, f'{model_name}_training_time', 'N/A')
+        # Add performance data with professional formatting
+        if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
+            for model_name, performance in self.ai_agent.model_performance.items():
+                # Calculate additional metrics (placeholder - would be calculated during training)
+                mae = getattr(self.ai_agent, f'{model_name}_mae', 'N/A')
+                rmse = getattr(self.ai_agent, f'{model_name}_rmse', 'N/A')
+                training_time = getattr(self.ai_agent, f'{model_name}_training_time', 'N/A')
 
-                        # Determine status based on performance
-                        if performance > 0.8:
-                            status = "Excellent ⭐⭐⭐"
-                        elif performance > 0.6:
-                            status = "Good ⭐⭐"
-                        elif performance > 0.4:
-                            status = "Fair ⭐"
-                        else:
-                            status = "Poor"
+                # Determine status based on performance
+                if performance > 0.8:
+                    status = "Excellent ⭐⭐⭐"
+                elif performance > 0.6:
+                    status = "Good ⭐⭐"
+                elif performance > 0.4:
+                    status = "Fair ⭐"
+                else:
+                    status = "Poor"
 
-                        self.performance_tree.insert('', tk.END, values=(
-                            model_name.replace('_', ' ').title(),
-                            f"{performance:.1%}",
-                            f"{performance:.3f}",
-                            f"{mae:.3f}" if mae != 'N/A' else 'N/A',
-                            f"{rmse:.3f}" if rmse != 'N/A' else 'N/A',
-                            f"{training_time:.2f}s" if training_time != 'N/A' else 'N/A',
-                            status
-                        ))
+                self.performance_tree.insert('', tk.END, values=(
+                    model_name.replace('_', ' ').title(),
+                    f"{performance:.1%}",
+                    f"{performance:.3f}",
+                    f"{mae:.3f}" if mae != 'N/A' else 'N/A',
+                    f"{rmse:.3f}" if rmse != 'N/A' else 'N/A',
+                    f"{training_time:.2f}s" if training_time != 'N/A' else 'N/A',
+                    status
+                ))
 
-        def update_risk_display(self):
-                """Update risk assessment display with comprehensive analysis"""
-                self.risk_display.delete(1.0, tk.END)
+    def update_risk_display(self):
+        """Update risk assessment display with comprehensive analysis"""
+        self.risk_display.delete(1.0, tk.END)
 
-                risk_text = f"""⚠️ COMPREHENSIVE RISK ASSESSMENT
+        risk_text = f"""⚠️ COMPREHENSIVE RISK ASSESSMENT
             {'=' * 70}
 
             Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
@@ -5515,25 +6289,25 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Market Risk Metrics
-                risk_text += f"""📊 MARKET RISK METRICS
+        # Market Risk Metrics
+        risk_text += f"""📊 MARKET RISK METRICS
             {'-' * 50}
 
             """
 
-                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
-                    returns = self.ai_agent.data['Close'].pct_change().dropna()
+        if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+            returns = self.ai_agent.data['Close'].pct_change().dropna()
 
-                    if len(returns) > 0:
-                        # Value at Risk calculations
-                        var_95 = np.percentile(returns, 5)
-                        var_99 = np.percentile(returns, 1)
+            if len(returns) > 0:
+                # Value at Risk calculations
+                var_95 = np.percentile(returns, 5)
+                var_99 = np.percentile(returns, 1)
 
-                        # Expected Shortfall (Conditional VaR)
-                        es_95 = returns[returns <= var_95].mean()
-                        es_99 = returns[returns <= var_99].mean()
+                # Expected Shortfall (Conditional VaR)
+                es_95 = returns[returns <= var_95].mean()
+                es_99 = returns[returns <= var_99].mean()
 
-                        risk_text += f"""Value at Risk (VaR):
+                risk_text += f"""Value at Risk (VaR):
             • 95% VaR (1-day): {var_95:.2%} (${abs(var_95) * 1000:.2f} loss per $1000)
             • 99% VaR (1-day): {var_99:.2%} (${abs(var_99) * 1000:.2f} loss per $1000)
 
@@ -5543,30 +6317,30 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                        # Maximum Drawdown Analysis
-                        cumulative = (1 + returns).cumprod()
-                        rolling_max = cumulative.expanding().max()
-                        drawdown = (cumulative - rolling_max) / rolling_max
-                        max_drawdown = drawdown.min()
+                # Maximum Drawdown Analysis
+                cumulative = (1 + returns).cumprod()
+                rolling_max = cumulative.expanding().max()
+                drawdown = (cumulative - rolling_max) / rolling_max
+                max_drawdown = drawdown.min()
 
-                        # Current drawdown
-                        current_drawdown = drawdown.iloc[-1]
+                # Current drawdown
+                current_drawdown = drawdown.iloc[-1]
 
-                        risk_text += f"""Drawdown Analysis:
+                risk_text += f"""Drawdown Analysis:
             • Maximum Drawdown: {max_drawdown:.2%}
             • Current Drawdown: {current_drawdown:.2%}
             • Recovery Status: {"In drawdown" if current_drawdown < -0.01 else "Near peak"}
 
             """
 
-                        # Volatility Analysis
-                        daily_vol = returns.std()
-                        annual_vol = daily_vol * np.sqrt(252)
-                        vol_percentile = np.percentile(returns.rolling(20).std().dropna(), 70)
+                # Volatility Analysis
+                daily_vol = returns.std()
+                annual_vol = daily_vol * np.sqrt(252)
+                vol_percentile = np.percentile(returns.rolling(20).std().dropna(), 70)
 
-                        vol_regime = "High" if daily_vol > vol_percentile * 1.5 else "Low" if daily_vol < vol_percentile * 0.7 else "Normal"
+                vol_regime = "High" if daily_vol > vol_percentile * 1.5 else "Low" if daily_vol < vol_percentile * 0.7 else "Normal"
 
-                        risk_text += f"""Volatility Metrics:
+                risk_text += f"""Volatility Metrics:
             • Daily Volatility: {daily_vol:.2%}
             • Annualized Volatility: {annual_vol:.1%}
             • Volatility Regime: {vol_regime}
@@ -5574,39 +6348,39 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                        # Sharpe Ratio (assuming 2% risk-free rate)
-                        risk_free_rate = 0.02
-                        excess_returns = returns - risk_free_rate / 252
-                        sharpe_ratio = excess_returns.mean() / returns.std() * np.sqrt(252)
+                # Sharpe Ratio (assuming 2% risk-free rate)
+                risk_free_rate = 0.02
+                excess_returns = returns - risk_free_rate / 252
+                sharpe_ratio = excess_returns.mean() / returns.std() * np.sqrt(252)
 
-                        # Sortino Ratio (downside deviation)
-                        downside_returns = returns[returns < 0]
-                        downside_deviation = downside_returns.std()
-                        sortino_ratio = excess_returns.mean() / downside_deviation * np.sqrt(252) if len(
-                            downside_returns) > 0 else 0
+                # Sortino Ratio (downside deviation)
+                downside_returns = returns[returns < 0]
+                downside_deviation = downside_returns.std()
+                sortino_ratio = excess_returns.mean() / downside_deviation * np.sqrt(252) if len(
+                    downside_returns) > 0 else 0
 
-                        risk_text += f"""Risk-Adjusted Returns:
+                risk_text += f"""Risk-Adjusted Returns:
             • Sharpe Ratio: {sharpe_ratio:.2f}
             • Sortino Ratio: {sortino_ratio:.2f}
             • Information Ratio: N/A (benchmark needed)
 
             """
 
-                # Model Risk Assessment
-                risk_text += f"""🤖 MODEL RISK ASSESSMENT
+        # Model Risk Assessment
+        risk_text += f"""🤖 MODEL RISK ASSESSMENT
             {'-' * 50}
 
             """
 
-                if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
-                    performances = list(self.ai_agent.model_performance.values())
-                    avg_performance = np.mean(performances)
-                    std_performance = np.std(performances)
-                    min_performance = min(performances)
+        if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
+            performances = list(self.ai_agent.model_performance.values())
+            avg_performance = np.mean(performances)
+            std_performance = np.std(performances)
+            min_performance = min(performances)
 
-                    model_risk = "Low" if avg_performance > 0.8 and std_performance < 0.1 else "Medium" if avg_performance > 0.6 else "High"
+            model_risk = "Low" if avg_performance > 0.8 and std_performance < 0.1 else "Medium" if avg_performance > 0.6 else "High"
 
-                    risk_text += f"""Model Reliability Assessment:
+            risk_text += f"""Model Reliability Assessment:
             • Average Model Score: {avg_performance:.1%}
             • Performance Std Dev: {std_performance:.1%}
             • Worst Model Score: {min_performance:.1%}
@@ -5614,18 +6388,18 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                    # Model disagreement analysis
-                    if len(performances) > 1:
-                        disagreement = "High" if std_performance > 0.15 else "Medium" if std_performance > 0.08 else "Low"
-                        risk_text += f"""Model Consensus Analysis:
+            # Model disagreement analysis
+            if len(performances) > 1:
+                disagreement = "High" if std_performance > 0.15 else "Medium" if std_performance > 0.08 else "Low"
+                risk_text += f"""Model Consensus Analysis:
             • Model Agreement: {disagreement} disagreement
             • Consensus Strength: {"Weak" if std_performance > 0.15 else "Strong"}
             • Prediction Reliability: {"Use with caution" if std_performance > 0.15 else "Good confidence"}
 
             """
 
-                # Position Risk Analysis
-                risk_text += f"""💰 POSITION RISK ANALYSIS
+        # Position Risk Analysis
+        risk_text += f"""💰 POSITION RISK ANALYSIS
             {'-' * 50}
 
             Current Settings:
@@ -5635,29 +6409,29 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                position_size_pct = self.position_size.get() / 100
-                stop_loss_pct = self.stop_loss.get() / 100
-                max_loss_per_trade = position_size_pct * stop_loss_pct
+        position_size_pct = self.position_size.get() / 100
+        stop_loss_pct = self.stop_loss.get() / 100
+        max_loss_per_trade = position_size_pct * stop_loss_pct
 
-                risk_text += f"""Risk Calculations:
+        risk_text += f"""Risk Calculations:
             • Maximum Loss per Trade: {max_loss_per_trade:.2%} of total portfolio
             • Risk per $10,000 portfolio: ${max_loss_per_trade * 10000:.2f}
             • Break-even trades needed: {1 / max_loss_per_trade:.1f} profitable trades per loss
 
             """
 
-                # Kelly Criterion calculation (simplified)
-                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None and len(returns) > 0:
-                    win_rate = len(returns[returns > 0]) / len(returns)
-                    avg_win = returns[returns > 0].mean() if len(returns[returns > 0]) > 0 else 0
-                    avg_loss = abs(returns[returns < 0].mean()) if len(returns[returns < 0]) > 0 else 0
+        # Kelly Criterion calculation (simplified)
+        if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None and len(returns) > 0:
+            win_rate = len(returns[returns > 0]) / len(returns)
+            avg_win = returns[returns > 0].mean() if len(returns[returns > 0]) > 0 else 0
+            avg_loss = abs(returns[returns < 0].mean()) if len(returns[returns < 0]) > 0 else 0
 
-                    if avg_loss > 0:
-                        win_loss_ratio = avg_win / avg_loss
-                        kelly_fraction = (win_rate * win_loss_ratio - (1 - win_rate)) / win_loss_ratio
-                        kelly_fraction = max(0, min(kelly_fraction, 0.25))  # Cap at 25%
+            if avg_loss > 0:
+                win_loss_ratio = avg_win / avg_loss
+                kelly_fraction = (win_rate * win_loss_ratio - (1 - win_rate)) / win_loss_ratio
+                kelly_fraction = max(0, min(kelly_fraction, 0.25))  # Cap at 25%
 
-                        risk_text += f"""Kelly Criterion Analysis:
+                risk_text += f"""Kelly Criterion Analysis:
             • Historical Win Rate: {win_rate:.1%}
             • Average Win/Loss Ratio: {win_loss_ratio:.2f}
             • Kelly Optimal Position: {kelly_fraction:.1%} of portfolio
@@ -5665,18 +6439,18 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Risk Management Recommendations
-                risk_text += f"""🎯 RISK MANAGEMENT RECOMMENDATIONS
+        # Risk Management Recommendations
+        risk_text += f"""🎯 RISK MANAGEMENT RECOMMENDATIONS
             {'-' * 50}
 
             Based on Risk Profile: {self.risk_tolerance.get().title()}
 
             """
 
-                risk_tolerance = self.risk_tolerance.get()
+        risk_tolerance = self.risk_tolerance.get()
 
-                if risk_tolerance == "conservative":
-                    risk_text += """Conservative Approach:
+        if risk_tolerance == "conservative":
+            risk_text += """Conservative Approach:
             ✅ Recommended Actions:
             • Use smaller position sizes (2-3% max)
             • Set tight stop losses (3-5%)
@@ -5692,8 +6466,8 @@ class ProfessionalSmartStockAIApp:
             • Concentration in single positions
 
             """
-                elif risk_tolerance == "moderate":
-                    risk_text += """Moderate Approach:
+        elif risk_tolerance == "moderate":
+            risk_text += """Moderate Approach:
             ✅ Recommended Actions:
             • Standard position sizes (3-7%)
             • Moderate stop losses (5-8%)
@@ -5709,8 +6483,8 @@ class ProfessionalSmartStockAIApp:
             • Position concentration
 
             """
-                else:  # aggressive
-                    risk_text += """Aggressive Approach:
+        else:  # aggressive
+            risk_text += """Aggressive Approach:
             ✅ Acceptable Actions:
             • Larger position sizes (5-15%)
             • Wider stop losses (8-12%)
@@ -5727,8 +6501,8 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Universal risk management rules
-                risk_text += f"""🛡️ UNIVERSAL RISK MANAGEMENT RULES
+        # Universal risk management rules
+        risk_text += f"""🛡️ UNIVERSAL RISK MANAGEMENT RULES
             {'-' * 50}
 
             Essential Principles (All Risk Levels):
@@ -5741,13 +6515,13 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Market condition warnings
-                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
-                    current_vol = returns.rolling(20).std().iloc[-1] if len(returns) > 20 else daily_vol
-                    vol_threshold = returns.std() * 1.5
+        # Market condition warnings
+        if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+            current_vol = returns.rolling(20).std().iloc[-1] if len(returns) > 20 else daily_vol
+            vol_threshold = returns.std() * 1.5
 
-                    if current_vol > vol_threshold:
-                        risk_text += f"""🚨 CURRENT MARKET WARNING
+            if current_vol > vol_threshold:
+                risk_text += f"""🚨 CURRENT MARKET WARNING
             {'-' * 50}
 
             HIGH VOLATILITY ENVIRONMENT DETECTED
@@ -5764,8 +6538,8 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Portfolio heat map (if multiple positions)
-                risk_text += f"""📊 PORTFOLIO RISK SUMMARY
+        # Portfolio heat map (if multiple positions)
+        risk_text += f"""📊 PORTFOLIO RISK SUMMARY
             {'-' * 50}
 
             Current Portfolio Risk Profile:
@@ -5778,8 +6552,8 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Stress testing scenarios
-                risk_text += f"""📈 STRESS TESTING SCENARIOS
+        # Stress testing scenarios
+        risk_text += f"""📈 STRESS TESTING SCENARIOS
             {'-' * 50}
 
             Scenario Analysis (Portfolio Impact):
@@ -5798,8 +6572,8 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Emergency procedures
-                risk_text += f"""🚨 EMERGENCY PROCEDURES
+        # Emergency procedures
+        risk_text += f"""🚨 EMERGENCY PROCEDURES
             {'-' * 50}
 
             Immediate Actions if Portfolio Loss Exceeds 5%:
@@ -5822,8 +6596,8 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                # Regulatory and compliance notes
-                risk_text += f"""📋 COMPLIANCE & REGULATORY NOTES
+        # Regulatory and compliance notes
+        risk_text += f"""📋 COMPLIANCE & REGULATORY NOTES
             {'-' * 50}
 
             Important Disclaimers:
@@ -5840,234 +6614,234 @@ class ProfessionalSmartStockAIApp:
 
             """
 
-                self.risk_display.insert(tk.END, risk_text)
+        self.risk_display.insert(tk.END, risk_text)
 
-            # Additional professional GUI methods (utility functions)
+    # Additional professional GUI methods (utility functions)
 
-        def get_current_user(self):
-                """Get current user (wahabsust)"""
-                return "wahabsust"
+    def get_current_user(self):
+        """Get current user (wahabsust)"""
+        return "wahabsust"
 
-        def update_status(self, message, status_type="info"):
-                """Update status with professional styling"""
-                colors = {
-                    "info": self.colors['primary_blue'],
-                    "success": self.colors['success_green'],
-                    "error": self.colors['error_red'],
-                    "warning": self.colors['warning_orange']
-                }
+    def update_status(self, message, status_type="info"):
+        """Update status with professional styling"""
+        colors = {
+            "info": self.colors['primary_blue'],
+            "success": self.colors['success_green'],
+            "error": self.colors['error_red'],
+            "warning": self.colors['warning_orange']
+        }
 
-                color = colors.get(status_type, self.colors['dark_blue'])
+        color = colors.get(status_type, self.colors['dark_blue'])
 
-                if hasattr(self, 'status_label'):
-                    self.status_label.config(text=message, foreground=color)
+        if hasattr(self, 'status_label'):
+            self.status_label.config(text=message, foreground=color)
 
-                if hasattr(self, 'status_indicator'):
-                    indicator_text = {
-                        "info": "● Processing",
-                        "success": "● Ready",
-                        "error": "● Error",
-                        "warning": "● Warning"
+        if hasattr(self, 'status_indicator'):
+            indicator_text = {
+                "info": "● Processing",
+                "success": "● Ready",
+                "error": "● Error",
+                "warning": "● Warning"
+            }
+            self.status_indicator.config(text=indicator_text.get(status_type, "● Ready"),
+                                         foreground=color)
+
+    def update_prediction_label(self, value):
+        """Update prediction horizon label"""
+        if hasattr(self, 'prediction_label'):
+            self.prediction_label.config(text=f"{int(float(value))} days")
+
+    # Placeholder methods for functionality to be implemented
+
+    def refresh_predictions(self):
+        """Refresh predictions with current data"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required",
+                                   "Please complete the initial analysis first!\n\n"
+                                   "Go to Analysis Setup tab and click 'Start Complete Analysis'.")
+            return
+
+        try:
+            self.update_status("🔄 Refreshing predictions...", "info")
+            predictions, confidence = self.ai_agent.make_enhanced_predictions()
+            self.display_comprehensive_results(predictions, confidence)
+            self.update_status("✅ Predictions refreshed successfully", "success")
+        except Exception as e:
+            messagebox.showerror("Refresh Error", f"Failed to refresh predictions:\n\n{str(e)}")
+            self.update_status("❌ Prediction refresh failed", "error")
+
+    def compare_models(self):
+        """Create professional model comparison visualization"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+            return
+
+        try:
+            # Create comparison chart
+            fig = go.Figure()
+
+            models = list(self.ai_agent.model_performance.keys())
+            scores = list(self.ai_agent.model_performance.values())
+
+            # Create professional bar chart
+            fig.add_trace(go.Bar(
+                x=[model.replace('_', ' ').title() for model in models],
+                y=scores,
+                name='Performance Score',
+                marker=dict(
+                    color=scores,
+                    colorscale='Blues',
+                    colorbar=dict(title="Performance"),
+                    line=dict(color='white', width=2)
+                ),
+                text=[f'{s:.1%}' for s in scores],
+                textposition='auto',
+                hovertemplate='<b>%{x}</b><br>Performance: %{y:.1%}<extra></extra>'
+            ))
+
+            # Add average line
+            avg_score = np.mean(scores)
+            fig.add_hline(y=avg_score, line_dash="dash", line_color="red",
+                          annotation_text=f"Average: {avg_score:.1%}")
+
+            fig.update_layout(
+                title=dict(
+                    text="SmartStock AI - Model Performance Comparison",
+                    font=dict(size=20, family="Segoe UI"),
+                    x=0.5
+                ),
+                xaxis_title="Models",
+                yaxis_title="Performance Score",
+                template="plotly_white",
+                height=600,
+                showlegend=False,
+                yaxis=dict(tickformat='.0%')
+            )
+
+            # Save and display
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
+            pyo.plot(fig, filename=temp_file.name, auto_open=False)
+            webbrowser.open(f'file://{temp_file.name}')
+
+        except Exception as e:
+            messagebox.showerror("Comparison Error", f"Failed to create comparison:\n\n{str(e)}")
+
+    def export_predictions(self):
+        """Export predictions with professional formatting"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Export SmartStock AI Predictions",
+            defaultextension=".txt",
+            filetypes=[
+                ("Text Report", "*.txt"),
+                ("CSV Data", "*.csv"),
+                ("JSON Data", "*.json"),
+                ("Excel Report", "*.xlsx")
+            ],
+            initialfile=f"smartstock_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+
+        if file_path:
+            try:
+                if file_path.endswith('.json'):
+                    # Export as structured JSON
+                    export_data = {
+                        'metadata': {
+                            'generated_by': 'SmartStock AI v2.0 Professional',
+                            'user': self.get_current_user(),
+                            'timestamp': datetime.now().isoformat(),
+                            'data_file': os.path.basename(self.csv_file_path) if self.csv_file_path else 'Sample Data',
+                            'analysis_id': f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}"
+                        },
+                        'predictions': self.ai_agent.predictions if hasattr(self.ai_agent, 'predictions') else {},
+                        'confidence': self.ai_agent.prediction_confidence if hasattr(self.ai_agent,
+                                                                                     'prediction_confidence') else {},
+                        'model_performance': self.ai_agent.model_performance if hasattr(self.ai_agent,
+                                                                                        'model_performance') else {},
+                        'smart_money_analysis': self.ai_agent.smart_money_analysis if hasattr(self.ai_agent,
+                                                                                              'smart_money_analysis') else {},
+                        'risk_metrics': self.ai_agent.risk_metrics if hasattr(self.ai_agent, 'risk_metrics') else {},
+                        'configuration': {
+                            'models_used': [k for k, v in self.model_vars.items() if v.get()],
+                            'deep_learning_used': [k for k, v in self.dl_vars.items() if v.get()],
+                            'indicators_used': [k for k, v in self.indicator_vars.items() if v.get()],
+                            'prediction_horizon': self.prediction_days.get(),
+                            'risk_tolerance': self.risk_tolerance.get()
+                        }
                     }
-                    self.status_indicator.config(text=indicator_text.get(status_type, "● Ready"),
-                                                 foreground=color)
 
-        def update_prediction_label(self, value):
-                """Update prediction horizon label"""
-                if hasattr(self, 'prediction_label'):
-                    self.prediction_label.config(text=f"{int(float(value))} days")
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(export_data, f, indent=2, default=str, ensure_ascii=False)
 
-            # Placeholder methods for functionality to be implemented
+                elif file_path.endswith('.csv'):
+                    # Export as CSV data
+                    if hasattr(self.ai_agent, 'predictions') and self.ai_agent.predictions:
+                        df_data = []
+                        for model, prediction in self.ai_agent.predictions.items():
+                            confidence_score = self.ai_agent.prediction_confidence.get(model, 0)
+                            performance = self.ai_agent.model_performance.get(model, 0)
 
-        def refresh_predictions(self):
-                """Refresh predictions with current data"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required",
-                                           "Please complete the initial analysis first!\n\n"
-                                           "Go to Analysis Setup tab and click 'Start Complete Analysis'.")
-                    return
+                            df_data.append({
+                                'Model': model,
+                                'Prediction': prediction,
+                                'Confidence': confidence_score,
+                                'Performance': performance,
+                                'Timestamp': datetime.now().isoformat()
+                            })
 
-                try:
-                    self.update_status("🔄 Refreshing predictions...", "info")
-                    predictions, confidence = self.ai_agent.make_enhanced_predictions()
-                    self.display_comprehensive_results(predictions, confidence)
-                    self.update_status("✅ Predictions refreshed successfully", "success")
-                except Exception as e:
-                    messagebox.showerror("Refresh Error", f"Failed to refresh predictions:\n\n{str(e)}")
-                    self.update_status("❌ Prediction refresh failed", "error")
+                        df = pd.DataFrame(df_data)
+                        df.to_csv(file_path, index=False)
 
-        def compare_models(self):
-                """Create professional model comparison visualization"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required", "Please complete analysis first!")
-                    return
+                elif file_path.endswith('.xlsx'):
+                    # Export as Excel with multiple sheets
+                    with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                        # Summary sheet
+                        if hasattr(self.ai_agent, 'predictions') and self.ai_agent.predictions:
+                            summary_data = []
+                            for model, prediction in self.ai_agent.predictions.items():
+                                summary_data.append({
+                                    'Model': model,
+                                    'Prediction': prediction,
+                                    'Confidence': self.ai_agent.prediction_confidence.get(model, 0),
+                                    'Performance': self.ai_agent.model_performance.get(model, 0)
+                                })
 
-                try:
-                    # Create comparison chart
-                    fig = go.Figure()
+                            pd.DataFrame(summary_data).to_excel(writer, sheet_name='Predictions', index=False)
 
-                    models = list(self.ai_agent.model_performance.keys())
-                    scores = list(self.ai_agent.model_performance.values())
+                        # Performance sheet
+                        if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
+                            perf_data = [{'Model': k, 'Performance': v} for k, v in
+                                         self.ai_agent.model_performance.items()]
+                            pd.DataFrame(perf_data).to_excel(writer, sheet_name='Performance', index=False)
 
-                    # Create professional bar chart
-                    fig.add_trace(go.Bar(
-                        x=[model.replace('_', ' ').title() for model in models],
-                        y=scores,
-                        name='Performance Score',
-                        marker=dict(
-                            color=scores,
-                            colorscale='Blues',
-                            colorbar=dict(title="Performance"),
-                            line=dict(color='white', width=2)
-                        ),
-                        text=[f'{s:.1%}' for s in scores],
-                        textposition='auto',
-                        hovertemplate='<b>%{x}</b><br>Performance: %{y:.1%}<extra></extra>'
-                    ))
+                        # Metadata sheet
+                        metadata = {
+                            'Generated By': ['SmartStock AI v2.0 Professional'],
+                            'User': [self.get_current_user()],
+                            'Timestamp': [datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')],
+                            'Data File': [os.path.basename(self.csv_file_path) if self.csv_file_path else 'Sample Data']
+                        }
+                        pd.DataFrame(metadata).to_excel(writer, sheet_name='Metadata', index=False)
 
-                    # Add average line
-                    avg_score = np.mean(scores)
-                    fig.add_hline(y=avg_score, line_dash="dash", line_color="red",
-                                  annotation_text=f"Average: {avg_score:.1%}")
+                else:
+                    # Export as text report
+                    content = self.predictions_text.get(1.0, tk.END)
+                    detailed_content = self.detailed_predictions.get(1.0, tk.END)
 
-                    fig.update_layout(
-                        title=dict(
-                            text="SmartStock AI - Model Performance Comparison",
-                            font=dict(size=20, family="Segoe UI"),
-                            x=0.5
-                        ),
-                        xaxis_title="Models",
-                        yaxis_title="Performance Score",
-                        template="plotly_white",
-                        height=600,
-                        showlegend=False,
-                        yaxis=dict(tickformat='.0%')
-                    )
-
-                    # Save and display
-                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-                    pyo.plot(fig, filename=temp_file.name, auto_open=False)
-                    webbrowser.open(f'file://{temp_file.name}')
-
-                except Exception as e:
-                    messagebox.showerror("Comparison Error", f"Failed to create comparison:\n\n{str(e)}")
-
-
-        def export_predictions(self):
-                """Export predictions with professional formatting"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required", "Please complete analysis first!")
-                    return
-
-                file_path = filedialog.asksaveasfilename(
-                    title="Export SmartStock AI Predictions",
-                    defaultextension=".txt",
-                    filetypes=[
-                        ("Text Report", "*.txt"),
-                        ("CSV Data", "*.csv"),
-                        ("JSON Data", "*.json"),
-                        ("Excel Report", "*.xlsx")
-                    ],
-                    initialfile=f"smartstock_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
-
-                if file_path:
-                    try:
-                        if file_path.endswith('.json'):
-                            # Export as structured JSON
-                            export_data = {
-                                'metadata': {
-                                    'generated_by': 'SmartStock AI v2.0 Professional',
-                                    'user': self.get_current_user(),
-                                    'timestamp': datetime.now().isoformat(),
-                                    'data_file': os.path.basename(self.csv_file_path) if self.csv_file_path else 'Sample Data',
-                                    'analysis_id': f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}"
-                                },
-                                'predictions': self.ai_agent.predictions if hasattr(self.ai_agent, 'predictions') else {},
-                                'confidence': self.ai_agent.prediction_confidence if hasattr(self.ai_agent,
-                                                                                             'prediction_confidence') else {},
-                                'model_performance': self.ai_agent.model_performance if hasattr(self.ai_agent,
-                                                                                                'model_performance') else {},
-                                'smart_money_analysis': self.ai_agent.smart_money_analysis if hasattr(self.ai_agent,
-                                                                                                      'smart_money_analysis') else {},
-                                'risk_metrics': self.ai_agent.risk_metrics if hasattr(self.ai_agent, 'risk_metrics') else {},
-                                'configuration': {
-                                    'models_used': [k for k, v in self.model_vars.items() if v.get()],
-                                    'deep_learning_used': [k for k, v in self.dl_vars.items() if v.get()],
-                                    'indicators_used': [k for k, v in self.indicator_vars.items() if v.get()],
-                                    'prediction_horizon': self.prediction_days.get(),
-                                    'risk_tolerance': self.risk_tolerance.get()
-                                }
-                            }
-
-                            with open(file_path, 'w', encoding='utf-8') as f:
-                                json.dump(export_data, f, indent=2, default=str, ensure_ascii=False)
-
-                        elif file_path.endswith('.csv'):
-                            # Export as CSV data
-                            if hasattr(self.ai_agent, 'predictions') and self.ai_agent.predictions:
-                                df_data = []
-                                for model, prediction in self.ai_agent.predictions.items():
-                                    confidence_score = self.ai_agent.prediction_confidence.get(model, 0)
-                                    performance = self.ai_agent.model_performance.get(model, 0)
-
-                                    df_data.append({
-                                        'Model': model,
-                                        'Prediction': prediction,
-                                        'Confidence': confidence_score,
-                                        'Performance': performance,
-                                        'Timestamp': datetime.now().isoformat()
-                                    })
-
-                                df = pd.DataFrame(df_data)
-                                df.to_csv(file_path, index=False)
-
-                        elif file_path.endswith('.xlsx'):
-                            # Export as Excel with multiple sheets
-                            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                                # Summary sheet
-                                if hasattr(self.ai_agent, 'predictions') and self.ai_agent.predictions:
-                                    summary_data = []
-                                    for model, prediction in self.ai_agent.predictions.items():
-                                        summary_data.append({
-                                            'Model': model,
-                                            'Prediction': prediction,
-                                            'Confidence': self.ai_agent.prediction_confidence.get(model, 0),
-                                            'Performance': self.ai_agent.model_performance.get(model, 0)
-                                        })
-
-                                    pd.DataFrame(summary_data).to_excel(writer, sheet_name='Predictions', index=False)
-
-                                # Performance sheet
-                                if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
-                                    perf_data = [{'Model': k, 'Performance': v} for k, v in self.ai_agent.model_performance.items()]
-                                    pd.DataFrame(perf_data).to_excel(writer, sheet_name='Performance', index=False)
-
-                                # Metadata sheet
-                                metadata = {
-                                    'Generated By': ['SmartStock AI v2.0 Professional'],
-                                    'User': [self.get_current_user()],
-                                    'Timestamp': [datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')],
-                                    'Data File': [os.path.basename(self.csv_file_path) if self.csv_file_path else 'Sample Data']
-                                }
-                                pd.DataFrame(metadata).to_excel(writer, sheet_name='Metadata', index=False)
-
-                        else:
-                            # Export as text report
-                            content = self.predictions_text.get(1.0, tk.END)
-                            detailed_content = self.detailed_predictions.get(1.0, tk.END)
-
-                            full_report = f"""SMARTSTOCK AI v2.0 PROFESSIONAL - COMPLETE ANALYSIS REPORT
+                    full_report = f"""SMARTSTOCK AI v2.0 PROFESSIONAL - COMPLETE ANALYSIS REPORT
              {'=' * 90}
-            
+
              EXECUTIVE SUMMARY
              {'-' * 50}
              {content}
-            
+
              DETAILED TECHNICAL ANALYSIS
              {'-' * 50}
              {detailed_content}
-            
+
              EXPORT INFORMATION
              {'-' * 50}
              Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
@@ -6075,738 +6849,729 @@ class ProfessionalSmartStockAIApp:
              Software: SmartStock AI v2.0 Professional
              Export Format: Text Report
              File: {os.path.basename(file_path)}
-            
+
              © 2025 SmartStock AI Professional Trading Analysis Platform
              """
 
-                            with open(file_path, 'w', encoding='utf-8') as f:
-                                f.write(full_report)
-
-                        messagebox.showinfo("Export Successful",
-                                            f"✅ Predictions exported successfully!\n\n"
-                                            f"📁 File: {os.path.basename(file_path)}\n"
-                                            f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                                            f"📊 Format: {file_path.split('.')[-1].upper()}")
-
-                        self.update_status(f"✅ Predictions exported: {os.path.basename(file_path)}", "success")
-
-                    except Exception as e:
-                        messagebox.showerror("Export Error", f"Failed to export predictions:\n\n{str(e)}")
-                        self.update_status("❌ Export failed", "error")
-
-        def generate_charts(self):
-                """Generate professional charts with enhanced styling"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required",
-                                           "Please complete the analysis first!\n\n"
-                                           "Go to Analysis Setup and click 'Start Complete Analysis'.")
-                    return
-
-                try:
-                    chart_type = self.chart_type.get()
-                    timeframe = self.timeframe.get()
-                    theme = self.chart_theme.get()
-
-                    self.update_status("📊 Generating professional charts...", "info")
-
-                    # Filter data based on timeframe
-                    data = self.ai_agent.data.copy()
-                    if timeframe != "all":
-                        days = {"1m": 30, "3m": 90, "6m": 180}[timeframe]
-                        data = data.tail(days)
-
-                    # Generate appropriate chart based on selection
-                    if chart_type == "comprehensive":
-                        fig = self.create_comprehensive_dashboard(data, theme)
-                    elif chart_type == "price":
-                        fig = self.create_price_action_chart(data, theme)
-                    elif chart_type == "technical":
-                        fig = self.create_technical_indicators_chart(data, theme)
-                    elif chart_type == "volume":
-                        fig = self.create_volume_analysis_chart(data, theme)
-                    elif chart_type == "smart_money":
-                        fig = self.create_smart_money_chart(data, theme)
-
-                    # Save and display chart
-                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-                    pyo.plot(fig, filename=temp_file.name, auto_open=False)
-                    webbrowser.open(f'file://{temp_file.name}')
-
-                    self.update_status("✅ Charts generated successfully", "success")
-
-                    # Update chart status
-                    self.chart_status.config(
-                        text="✅ Charts Generated Successfully!\n\n"
-                             "Professional trading charts have been created and opened in your browser.\n"
-                             "The charts include interactive features:\n"
-                             "• Zoom and pan capabilities\n"
-                             "• Hover for detailed information\n"
-                             "• Professional styling and colors\n"
-                             "• Export options available"
-                    )
-
-                except Exception as e:
-                    messagebox.showerror("Chart Error", f"Failed to generate charts:\n\n{str(e)}")
-                    self.update_status("❌ Chart generation failed", "error")
-
-
-        def create_comprehensive_dashboard(self, data, theme):
-                """Create comprehensive trading dashboard with professional styling"""
-                fig = make_subplots(
-                    rows=4, cols=2,
-                    subplot_titles=[
-                        'Price Action & Moving Averages', 'Volume Profile',
-                        'Momentum Indicators (RSI & MACD)', 'Smart Money Flow Indicators',
-                        'Bollinger Bands & Volatility', 'Technical Analysis Summary',
-                        'Market Structure Analysis', 'Risk Assessment Chart'
-                    ],
-                    vertical_spacing=0.08,
-                    horizontal_spacing=0.1,
-                    specs=[[{"secondary_y": True}, {"secondary_y": True}]] * 4
-                )
-
-                # Professional color scheme
-                colors = {
-                    'candlestick_up': '#00D4AA',
-                    'candlestick_down': '#FF4444',
-                    'ma_20': '#FF6B35',
-                    'ma_50': '#004E89',
-                    'ma_200': '#9B59B6',
-                    'volume': '#3498DB',
-                    'rsi': '#E74C3C',
-                    'macd': '#2ECC71',
-                    'signal': '#F39C12'
-                }
-
-                # 1. Price Action with Moving Averages
-                fig.add_trace(
-                    go.Candlestick(
-                        x=data.index,
-                        open=data['Open'],
-                        high=data['High'],
-                        low=data['Low'],
-                        close=data['Close'],
-                        name='OHLC',
-                        increasing_line_color=colors['candlestick_up'],
-                        decreasing_line_color=colors['candlestick_down'],
-                        increasing_fillcolor=colors['candlestick_up'],
-                        decreasing_fillcolor=colors['candlestick_down']
-                    ),
-                    row=1, col=1
-                )
-
-                # Add moving averages with professional styling
-                ma_configs = [
-                    ('SMA_20', colors['ma_20'], 'SMA 20', 2),
-                    ('SMA_50', colors['ma_50'], 'SMA 50', 2),
-                    ('SMA_200', colors['ma_200'], 'SMA 200', 3)
-                ]
-
-                for ma_col, color, name, width in ma_configs:
-                    if ma_col in data.columns:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=data.index,
-                                y=data[ma_col],
-                                name=name,
-                                line=dict(color=color, width=width),
-                                opacity=0.8
-                            ),
-                            row=1, col=1
-                        )
-
-                # 2. Volume Profile with enhanced visualization
-                fig.add_trace(
-                    go.Bar(
-                        x=data.index,
-                        y=data['Volume'],
-                        name='Volume',
-                        marker_color=colors['volume'],
-                        opacity=0.6,
-                        yaxis='y2'
-                    ),
-                    row=1, col=2
-                )
-
-                if 'Volume_SMA_20' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Volume_SMA_20'],
-                            name='Volume MA',
-                            line=dict(color='red', width=2),
-                            yaxis='y2'
-                        ),
-                        row=1, col=2
-                    )
-
-                # 3. RSI with professional levels
-                if 'RSI_14' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['RSI_14'],
-                            name='RSI(14)',
-                            line=dict(color=colors['rsi'], width=2)
-                        ),
-                        row=2, col=1
-                    )
-
-                    # RSI levels with fill areas
-                    fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1, opacity=0.7)
-                    fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1, opacity=0.7)
-                    fig.add_hline(y=50, line_dash="dot", line_color="gray", row=2, col=1, opacity=0.5)
-
-                # 4. MACD with histogram
-                if 'MACD' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['MACD'],
-                            name='MACD',
-                            line=dict(color=colors['macd'], width=2)
-                        ),
-                        row=2, col=2
-                    )
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['MACD_Signal'],
-                            name='Signal',
-                            line=dict(color=colors['signal'], width=2)
-                        ),
-                        row=2, col=2
-                    )
-
-                    fig.add_trace(
-                        go.Bar(
-                            x=data.index,
-                            y=data['MACD_Hist'],
-                            name='Histogram',
-                            marker_color='lightblue',
-                            opacity=0.6
-                        ),
-                        row=2, col=2
-                    )
-
-                # 5. Bollinger Bands with price
-                if 'BB_Upper' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['BB_Upper'],
-                            name='BB Upper',
-                            line=dict(color='gray', width=1, dash='dash'),
-                            opacity=0.7
-                        ),
-                        row=3, col=1
-                    )
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['BB_Lower'],
-                            name='BB Lower',
-                            line=dict(color='gray', width=1, dash='dash'),
-                            fill='tonexty',
-                            fillcolor='rgba(173, 216, 230, 0.2)',
-                            opacity=0.7
-                        ),
-                        row=3, col=1
-                    )
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Close'],
-                            name='Close Price',
-                            line=dict(color='black', width=2)
-                        ),
-                        row=3, col=1
-                    )
-
-                # 6. Smart Money Flow (OBV)
-                if 'OBV' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['OBV'],
-                            name='On Balance Volume',
-                            line=dict(color='purple', width=2)
-                        ),
-                        row=3, col=2
-                    )
-
-                # 7. Market Structure (Support/Resistance)
-                if 'Support' in data.columns and 'Resistance' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Support'],
-                            name='Support',
-                            line=dict(color='green', width=1, dash='dot'),
-                            opacity=0.6
-                        ),
-                        row=4, col=1
-                    )
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Resistance'],
-                            name='Resistance',
-                            line=dict(color='red', width=1, dash='dot'),
-                            opacity=0.6
-                        ),
-                        row=4, col=1
-                    )
-
-                # 8. Volatility Analysis
-                if 'ATR' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['ATR'],
-                            name='Average True Range',
-                            line=dict(color='orange', width=2)
-                        ),
-                        row=4, col=2
-                    )
-
-                # Update layout with professional styling
-                fig.update_layout(
-                    title=dict(
-                        text="SmartStock AI - Comprehensive Professional Trading Dashboard",
-                        font=dict(size=24, family="Segoe UI", color='#2C3E50'),
-                        x=0.5
-                    ),
-                    height=1200,
-                    showlegend=True,
-                    template=theme,
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1
-                    ),
-                    annotations=[
-                        dict(
-                            text=f"Generated by SmartStock AI v2.0 Professional | {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
-                            xref="paper", yref="paper",
-                            x=0.5, y=-0.1,
-                            showarrow=False,
-                            font=dict(size=10, color='gray')
-                        )
-                    ]
-                )
-
-                # Update axes labels
-                fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-                fig.update_yaxes(title_text="Volume", row=1, col=2)
-                fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100])
-                fig.update_yaxes(title_text="MACD", row=2, col=2)
-                fig.update_yaxes(title_text="Price ($)", row=3, col=1)
-                fig.update_yaxes(title_text="OBV", row=3, col=2)
-                fig.update_yaxes(title_text="Price ($)", row=4, col=1)
-                fig.update_yaxes(title_text="ATR", row=4, col=2)
-
-                return fig
-
-
-        def create_price_action_chart(self, data, theme):
-                """Create focused price action chart"""
-                fig = go.Figure()
-
-                # Professional candlestick chart
-                fig.add_trace(go.Candlestick(
-                    x=data.index,
-                    open=data['Open'],
-                    high=data['High'],
-                    low=data['Low'],
-                    close=data['Close'],
-                    name='Price Action',
-                    increasing_line_color='#00D4AA',
-                    decreasing_line_color='#FF4444'
-                ))
-
-                # Key moving averages with professional styling
-                mas = [
-                    ('SMA_20', '#FF6B35', 'SMA 20'),
-                    ('SMA_50', '#004E89', 'SMA 50'),
-                    ('SMA_200', '#9B59B6', 'SMA 200')
-                ]
-
-                for ma_col, color, name in mas:
-                    if ma_col in data.columns:
-                        fig.add_trace(go.Scatter(
-                            x=data.index,
-                            y=data[ma_col],
-                            name=name,
-                            line=dict(color=color, width=2),
-                            opacity=0.8
-                        ))
-
-                # Support and resistance levels
-                if 'Support' in data.columns:
-                    fig.add_trace(go.Scatter(
-                        x=data.index,
-                        y=data['Support'],
-                        name='Support Level',
-                        line=dict(color='green', width=1, dash='dot'),
-                        opacity=0.6
-                    ))
-
-                if 'Resistance' in data.columns:
-                    fig.add_trace(go.Scatter(
-                        x=data.index,
-                        y=data['Resistance'],
-                        name='Resistance Level',
-                        line=dict(color='red', width=1, dash='dot'),
-                        opacity=0.6
-                    ))
-
-                fig.update_layout(
-                    title=dict(
-                        text="Professional Price Action Analysis",
-                        font=dict(size=20, family="Segoe UI"),
-                        x=0.5
-                    ),
-                    xaxis_title="Date",
-                    yaxis_title="Price ($)",
-                    template=theme,
-                    height=700,
-                    showlegend=True
-                )
-
-                return fig
-
-
-        def create_technical_indicators_chart(self, data, theme):
-                """Create technical indicators chart"""
-                fig = make_subplots(
-                    rows=3, cols=1,
-                    subplot_titles=['RSI Analysis', 'MACD Analysis', 'Stochastic Oscillator'],
-                    vertical_spacing=0.15
-                )
-
-                # RSI with professional styling
-                if 'RSI_14' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['RSI_14'],
-                            name='RSI(14)',
-                            line=dict(color='#E74C3C', width=2)
-                        ),
-                        row=1, col=1
-                    )
-
-                    # RSI levels
-                    fig.add_hline(y=70, line_dash="dash", line_color="red", row=1, col=1, opacity=0.7)
-                    fig.add_hline(y=30, line_dash="dash", line_color="green", row=1, col=1, opacity=0.7)
-                    fig.add_hline(y=50, line_dash="dot", line_color="gray", row=1, col=1, opacity=0.5)
-
-                # MACD
-                if 'MACD' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['MACD'],
-                            name='MACD',
-                            line=dict(color='#2ECC71', width=2)
-                        ),
-                        row=2, col=1
-                    )
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['MACD_Signal'],
-                            name='Signal',
-                            line=dict(color='#F39C12', width=2)
-                        ),
-                        row=2, col=1
-                    )
-
-                    if 'MACD_Hist' in data.columns:
-                        fig.add_trace(
-                            go.Bar(
-                                x=data.index,
-                                y=data['MACD_Hist'],
-                                name='Histogram',
-                                marker_color='lightblue',
-                                opacity=0.6
-                            ),
-                            row=2, col=1
-                        )
-
-                # Stochastic
-                if 'Stoch_K' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Stoch_K'],
-                            name='%K',
-                            line=dict(color='#9B59B6', width=2)
-                        ),
-                        row=3, col=1
-                    )
-
-                if 'Stoch_D' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Stoch_D'],
-                            name='%D',
-                            line=dict(color='#34495E', width=2)
-                        ),
-                        row=3, col=1
-                    )
-
-                fig.update_layout(
-                    title=dict(
-                        text="Technical Indicators Professional Analysis",
-                        font=dict(size=20, family="Segoe UI"),
-                        x=0.5
-                    ),
-                    template=theme,
-                    height=900,
-                    showlegend=True
-                )
-
-                return fig
-
-
-        def create_volume_analysis_chart(self, data, theme):
-                """Create volume analysis chart"""
-                fig = make_subplots(
-                    rows=2, cols=1,
-                    subplot_titles=['Volume Profile & Trends', 'Volume Indicators'],
-                    vertical_spacing=0.2
-                )
-
-                # Volume bars with color coding
-                colors = ['red' if data['Close'].iloc[i] < data['Open'].iloc[i] else 'green'
-                          for i in range(len(data))]
-
-                fig.add_trace(
-                    go.Bar(
-                        x=data.index,
-                        y=data['Volume'],
-                        name='Volume',
-                        marker_color=colors,
-                        opacity=0.7
-                    ),
-                    row=1, col=1
-                )
-
-                if 'Volume_SMA_20' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Volume_SMA_20'],
-                            name='Volume MA(20)',
-                            line=dict(color='blue', width=2)
-                        ),
-                        row=1, col=1
-                    )
-
-                # OBV
-                if 'OBV' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['OBV'],
-                            name='On Balance Volume',
-                            line=dict(color='purple', width=2)
-                        ),
-                        row=2, col=1
-                    )
-
-                fig.update_layout(
-                    title=dict(
-                        text="Professional Volume Analysis",
-                        font=dict(size=20, family="Segoe UI"),
-                        x=0.5
-                    ),
-                    template=theme,
-                    height=800,
-                    showlegend=True
-                )
-
-                return fig
-
-
-        def create_smart_money_chart(self, data, theme):
-                """Create smart money flow analysis chart"""
-                fig = make_subplots(
-                    rows=2, cols=1,
-                    subplot_titles=['Smart Money Flow Indicators', 'Institutional Activity Analysis'],
-                    vertical_spacing=0.2
-                )
-
-                # Price with volume overlay (normalized)
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(full_report)
+
+                messagebox.showinfo("Export Successful",
+                                    f"✅ Predictions exported successfully!\n\n"
+                                    f"📁 File: {os.path.basename(file_path)}\n"
+                                    f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                                    f"📊 Format: {file_path.split('.')[-1].upper()}")
+
+                self.update_status(f"✅ Predictions exported: {os.path.basename(file_path)}", "success")
+
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export predictions:\n\n{str(e)}")
+                self.update_status("❌ Export failed", "error")
+
+    def generate_charts(self):
+        """Generate professional charts with enhanced styling"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required",
+                                   "Please complete the analysis first!\n\n"
+                                   "Go to Analysis Setup and click 'Start Complete Analysis'.")
+            return
+
+        try:
+            chart_type = self.chart_type.get()
+            timeframe = self.timeframe.get()
+            theme = self.chart_theme.get()
+
+            self.update_status("📊 Generating professional charts...", "info")
+
+            # Filter data based on timeframe
+            data = self.ai_agent.data.copy()
+            if timeframe != "all":
+                days = {"1m": 30, "3m": 90, "6m": 180}[timeframe]
+                data = data.tail(days)
+
+            # Generate appropriate chart based on selection
+            if chart_type == "comprehensive":
+                fig = self.create_comprehensive_dashboard(data, theme)
+            elif chart_type == "price":
+                fig = self.create_price_action_chart(data, theme)
+            elif chart_type == "technical":
+                fig = self.create_technical_indicators_chart(data, theme)
+            elif chart_type == "volume":
+                fig = self.create_volume_analysis_chart(data, theme)
+            elif chart_type == "smart_money":
+                fig = self.create_smart_money_chart(data, theme)
+
+            # Save and display chart
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
+            pyo.plot(fig, filename=temp_file.name, auto_open=False)
+            webbrowser.open(f'file://{temp_file.name}')
+
+            self.update_status("✅ Charts generated successfully", "success")
+
+            # Update chart status
+            self.chart_status.config(
+                text="✅ Charts Generated Successfully!\n\n"
+                     "Professional trading charts have been created and opened in your browser.\n"
+                     "The charts include interactive features:\n"
+                     "• Zoom and pan capabilities\n"
+                     "• Hover for detailed information\n"
+                     "• Professional styling and colors\n"
+                     "• Export options available"
+            )
+
+        except Exception as e:
+            messagebox.showerror("Chart Error", f"Failed to generate charts:\n\n{str(e)}")
+            self.update_status("❌ Chart generation failed", "error")
+
+    def create_comprehensive_dashboard(self, data, theme):
+        """Create comprehensive trading dashboard with professional styling"""
+        fig = make_subplots(
+            rows=4, cols=2,
+            subplot_titles=[
+                'Price Action & Moving Averages', 'Volume Profile',
+                'Momentum Indicators (RSI & MACD)', 'Smart Money Flow Indicators',
+                'Bollinger Bands & Volatility', 'Technical Analysis Summary',
+                'Market Structure Analysis', 'Risk Assessment Chart'
+            ],
+            vertical_spacing=0.08,
+            horizontal_spacing=0.1,
+            specs=[[{"secondary_y": True}, {"secondary_y": True}]] * 4
+        )
+
+        # Professional color scheme
+        colors = {
+            'candlestick_up': '#00D4AA',
+            'candlestick_down': '#FF4444',
+            'ma_20': '#FF6B35',
+            'ma_50': '#004E89',
+            'ma_200': '#9B59B6',
+            'volume': '#3498DB',
+            'rsi': '#E74C3C',
+            'macd': '#2ECC71',
+            'signal': '#F39C12'
+        }
+
+        # 1. Price Action with Moving Averages
+        fig.add_trace(
+            go.Candlestick(
+                x=data.index,
+                open=data['Open'],
+                high=data['High'],
+                low=data['Low'],
+                close=data['Close'],
+                name='OHLC',
+                increasing_line_color=colors['candlestick_up'],
+                decreasing_line_color=colors['candlestick_down'],
+                increasing_fillcolor=colors['candlestick_up'],
+                decreasing_fillcolor=colors['candlestick_down']
+            ),
+            row=1, col=1
+        )
+
+        # Add moving averages with professional styling
+        ma_configs = [
+            ('SMA_20', colors['ma_20'], 'SMA 20', 2),
+            ('SMA_50', colors['ma_50'], 'SMA 50', 2),
+            ('SMA_200', colors['ma_200'], 'SMA 200', 3)
+        ]
+
+        for ma_col, color, name, width in ma_configs:
+            if ma_col in data.columns:
                 fig.add_trace(
                     go.Scatter(
                         x=data.index,
-                        y=data['Close'],
-                        name='Price',
-                        line=dict(color='black', width=2)
+                        y=data[ma_col],
+                        name=name,
+                        line=dict(color=color, width=width),
+                        opacity=0.8
                     ),
                     row=1, col=1
                 )
 
-                if 'OBV' in data.columns:
-                    # Normalize OBV for overlay
-                    obv_norm = (data['OBV'] - data['OBV'].min()) / (data['OBV'].max() - data['OBV'].min())
-                    price_range = data['Close'].max() - data['Close'].min()
-                    obv_scaled = data['Close'].min() + (obv_norm * price_range)
+        # 2. Volume Profile with enhanced visualization
+        fig.add_trace(
+            go.Bar(
+                x=data.index,
+                y=data['Volume'],
+                name='Volume',
+                marker_color=colors['volume'],
+                opacity=0.6,
+                yaxis='y2'
+            ),
+            row=1, col=2
+        )
 
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=obv_scaled,
-                            name='OBV (Normalized)',
-                            line=dict(color='purple', width=2, dash='dash'),
-                            opacity=0.7
-                        ),
-                        row=1, col=1
-                    )
+        if 'Volume_SMA_20' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Volume_SMA_20'],
+                    name='Volume MA',
+                    line=dict(color='red', width=2),
+                    yaxis='y2'
+                ),
+                row=1, col=2
+            )
 
-                # Volume Price Trend
-                if 'Volume_Price_Trend' in data.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.index,
-                            y=data['Volume_Price_Trend'],
-                            name='Volume Price Trend',
-                            line=dict(color='orange', width=2)
-                        ),
-                        row=2, col=1
-                    )
+        # 3. RSI with professional levels
+        if 'RSI_14' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['RSI_14'],
+                    name='RSI(14)',
+                    line=dict(color=colors['rsi'], width=2)
+                ),
+                row=2, col=1
+            )
 
-                fig.update_layout(
-                    title=dict(
-                        text="Smart Money Flow Professional Analysis",
-                        font=dict(size=20, family="Segoe UI"),
-                        x=0.5
+            # RSI levels with fill areas
+            fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1, opacity=0.7)
+            fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1, opacity=0.7)
+            fig.add_hline(y=50, line_dash="dot", line_color="gray", row=2, col=1, opacity=0.5)
+
+        # 4. MACD with histogram
+        if 'MACD' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['MACD'],
+                    name='MACD',
+                    line=dict(color=colors['macd'], width=2)
+                ),
+                row=2, col=2
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['MACD_Signal'],
+                    name='Signal',
+                    line=dict(color=colors['signal'], width=2)
+                ),
+                row=2, col=2
+            )
+
+            fig.add_trace(
+                go.Bar(
+                    x=data.index,
+                    y=data['MACD_Hist'],
+                    name='Histogram',
+                    marker_color='lightblue',
+                    opacity=0.6
+                ),
+                row=2, col=2
+            )
+
+        # 5. Bollinger Bands with price
+        if 'BB_Upper' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['BB_Upper'],
+                    name='BB Upper',
+                    line=dict(color='gray', width=1, dash='dash'),
+                    opacity=0.7
+                ),
+                row=3, col=1
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['BB_Lower'],
+                    name='BB Lower',
+                    line=dict(color='gray', width=1, dash='dash'),
+                    fill='tonexty',
+                    fillcolor='rgba(173, 216, 230, 0.2)',
+                    opacity=0.7
+                ),
+                row=3, col=1
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Close'],
+                    name='Close Price',
+                    line=dict(color='black', width=2)
+                ),
+                row=3, col=1
+            )
+
+        # 6. Smart Money Flow (OBV)
+        if 'OBV' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['OBV'],
+                    name='On Balance Volume',
+                    line=dict(color='purple', width=2)
+                ),
+                row=3, col=2
+            )
+
+        # 7. Market Structure (Support/Resistance)
+        if 'Support' in data.columns and 'Resistance' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Support'],
+                    name='Support',
+                    line=dict(color='green', width=1, dash='dot'),
+                    opacity=0.6
+                ),
+                row=4, col=1
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Resistance'],
+                    name='Resistance',
+                    line=dict(color='red', width=1, dash='dot'),
+                    opacity=0.6
+                ),
+                row=4, col=1
+            )
+
+        # 8. Volatility Analysis
+        if 'ATR' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['ATR'],
+                    name='Average True Range',
+                    line=dict(color='orange', width=2)
+                ),
+                row=4, col=2
+            )
+
+        # Update layout with professional styling
+        fig.update_layout(
+            title=dict(
+                text="SmartStock AI - Comprehensive Professional Trading Dashboard",
+                font=dict(size=24, family="Segoe UI", color='#2C3E50'),
+                x=0.5
+            ),
+            height=1200,
+            showlegend=True,
+            template=theme,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            annotations=[
+                dict(
+                    text=f"Generated by SmartStock AI v2.0 Professional | {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=-0.1,
+                    showarrow=False,
+                    font=dict(size=10, color='gray')
+                )
+            ]
+        )
+
+        # Update axes labels
+        fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+        fig.update_yaxes(title_text="Volume", row=1, col=2)
+        fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100])
+        fig.update_yaxes(title_text="MACD", row=2, col=2)
+        fig.update_yaxes(title_text="Price ($)", row=3, col=1)
+        fig.update_yaxes(title_text="OBV", row=3, col=2)
+        fig.update_yaxes(title_text="Price ($)", row=4, col=1)
+        fig.update_yaxes(title_text="ATR", row=4, col=2)
+
+        return fig
+
+    def create_price_action_chart(self, data, theme):
+        """Create focused price action chart"""
+        fig = go.Figure()
+
+        # Professional candlestick chart
+        fig.add_trace(go.Candlestick(
+            x=data.index,
+            open=data['Open'],
+            high=data['High'],
+            low=data['Low'],
+            close=data['Close'],
+            name='Price Action',
+            increasing_line_color='#00D4AA',
+            decreasing_line_color='#FF4444'
+        ))
+
+        # Key moving averages with professional styling
+        mas = [
+            ('SMA_20', '#FF6B35', 'SMA 20'),
+            ('SMA_50', '#004E89', 'SMA 50'),
+            ('SMA_200', '#9B59B6', 'SMA 200')
+        ]
+
+        for ma_col, color, name in mas:
+            if ma_col in data.columns:
+                fig.add_trace(go.Scatter(
+                    x=data.index,
+                    y=data[ma_col],
+                    name=name,
+                    line=dict(color=color, width=2),
+                    opacity=0.8
+                ))
+
+        # Support and resistance levels
+        if 'Support' in data.columns:
+            fig.add_trace(go.Scatter(
+                x=data.index,
+                y=data['Support'],
+                name='Support Level',
+                line=dict(color='green', width=1, dash='dot'),
+                opacity=0.6
+            ))
+
+        if 'Resistance' in data.columns:
+            fig.add_trace(go.Scatter(
+                x=data.index,
+                y=data['Resistance'],
+                name='Resistance Level',
+                line=dict(color='red', width=1, dash='dot'),
+                opacity=0.6
+            ))
+
+        fig.update_layout(
+            title=dict(
+                text="Professional Price Action Analysis",
+                font=dict(size=20, family="Segoe UI"),
+                x=0.5
+            ),
+            xaxis_title="Date",
+            yaxis_title="Price ($)",
+            template=theme,
+            height=700,
+            showlegend=True
+        )
+
+        return fig
+
+    def create_technical_indicators_chart(self, data, theme):
+        """Create technical indicators chart"""
+        fig = make_subplots(
+            rows=3, cols=1,
+            subplot_titles=['RSI Analysis', 'MACD Analysis', 'Stochastic Oscillator'],
+            vertical_spacing=0.15
+        )
+
+        # RSI with professional styling
+        if 'RSI_14' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['RSI_14'],
+                    name='RSI(14)',
+                    line=dict(color='#E74C3C', width=2)
+                ),
+                row=1, col=1
+            )
+
+            # RSI levels
+            fig.add_hline(y=70, line_dash="dash", line_color="red", row=1, col=1, opacity=0.7)
+            fig.add_hline(y=30, line_dash="dash", line_color="green", row=1, col=1, opacity=0.7)
+            fig.add_hline(y=50, line_dash="dot", line_color="gray", row=1, col=1, opacity=0.5)
+
+        # MACD
+        if 'MACD' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['MACD'],
+                    name='MACD',
+                    line=dict(color='#2ECC71', width=2)
+                ),
+                row=2, col=1
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['MACD_Signal'],
+                    name='Signal',
+                    line=dict(color='#F39C12', width=2)
+                ),
+                row=2, col=1
+            )
+
+            if 'MACD_Hist' in data.columns:
+                fig.add_trace(
+                    go.Bar(
+                        x=data.index,
+                        y=data['MACD_Hist'],
+                        name='Histogram',
+                        marker_color='lightblue',
+                        opacity=0.6
                     ),
-                    template=theme,
-                    height=800,
-                    showlegend=True
+                    row=2, col=1
                 )
 
-                return fig
+        # Stochastic
+        if 'Stoch_K' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Stoch_K'],
+                    name='%K',
+                    line=dict(color='#9B59B6', width=2)
+                ),
+                row=3, col=1
+            )
 
+        if 'Stoch_D' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Stoch_D'],
+                    name='%D',
+                    line=dict(color='#34495E', width=2)
+                ),
+                row=3, col=1
+            )
 
-        def start_realtime_chart(self):
-                """Start real-time charting (placeholder for future implementation)"""
-                messagebox.showinfo("Real-time Charts",
-                                    "🔄 Real-time charting feature coming soon!\n\n"
-                                    "This will include:\n"
-                                    "• Live price updates\n"
-                                    "• Real-time technical indicators\n"
-                                    "• Dynamic chart updates\n"
-                                    "• Live trading signals\n\n"
-                                    "Stay tuned for the next update!")
+        fig.update_layout(
+            title=dict(
+                text="Technical Indicators Professional Analysis",
+                font=dict(size=20, family="Segoe UI"),
+                x=0.5
+            ),
+            template=theme,
+            height=900,
+            showlegend=True
+        )
 
+        return fig
 
-        def export_charts(self):
-                """Export charts to various formats"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required", "Please complete analysis first!")
-                    return
+    def create_volume_analysis_chart(self, data, theme):
+        """Create volume analysis chart"""
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=['Volume Profile & Trends', 'Volume Indicators'],
+            vertical_spacing=0.2
+        )
 
-                file_path = filedialog.asksaveasfilename(
-                    title="Export Professional Charts",
-                    defaultextension=".html",
-                    filetypes=[
-                        ("Interactive HTML", "*.html"),
-                        ("High-Quality PNG", "*.png"),
-                        ("Professional PDF", "*.pdf"),
-                        ("Vector SVG", "*.svg")
-                    ],
-                    initialfile=f"smartstock_charts_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
+        # Volume bars with color coding
+        colors = ['red' if data['Close'].iloc[i] < data['Open'].iloc[i] else 'green'
+                  for i in range(len(data))]
 
-                if file_path:
-                    try:
-                        # Generate chart based on current selection
-                        chart_type = self.chart_type.get()
-                        timeframe = self.timeframe.get()
-                        theme = self.chart_theme.get()
+        fig.add_trace(
+            go.Bar(
+                x=data.index,
+                y=data['Volume'],
+                name='Volume',
+                marker_color=colors,
+                opacity=0.7
+            ),
+            row=1, col=1
+        )
 
-                        data = self.ai_agent.data.copy()
-                        if timeframe != "all":
-                            days = {"1m": 30, "3m": 90, "6m": 180}[timeframe]
-                            data = data.tail(days)
+        if 'Volume_SMA_20' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Volume_SMA_20'],
+                    name='Volume MA(20)',
+                    line=dict(color='blue', width=2)
+                ),
+                row=1, col=1
+            )
 
-                        if chart_type == "comprehensive":
-                            fig = self.create_comprehensive_dashboard(data, theme)
-                        else:
-                            fig = self.create_price_action_chart(data, theme)
+        # OBV
+        if 'OBV' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['OBV'],
+                    name='On Balance Volume',
+                    line=dict(color='purple', width=2)
+                ),
+                row=2, col=1
+            )
 
-                        # Export based on file extension
-                        if file_path.endswith('.html'):
-                            pyo.plot(fig, filename=file_path, auto_open=False)
-                        elif file_path.endswith('.png'):
-                            fig.write_image(file_path, width=1920, height=1080, scale=2)
-                        elif file_path.endswith('.pdf'):
-                            fig.write_image(file_path, width=1920, height=1080)
-                        elif file_path.endswith('.svg'):
-                            fig.write_image(file_path, width=1920, height=1080)
+        fig.update_layout(
+            title=dict(
+                text="Professional Volume Analysis",
+                font=dict(size=20, family="Segoe UI"),
+                x=0.5
+            ),
+            template=theme,
+            height=800,
+            showlegend=True
+        )
 
-                        messagebox.showinfo("Export Successful",
-                                            f"✅ Charts exported successfully!\n\n"
-                                            f"📁 File: {os.path.basename(file_path)}\n"
-                                            f"📊 Format: {file_path.split('.')[-1].upper()}\n"
-                                            f"🎨 Theme: {theme}\n"
-                                            f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        return fig
 
-                        self.update_status(f"✅ Charts exported: {os.path.basename(file_path)}", "success")
+    def create_smart_money_chart(self, data, theme):
+        """Create smart money flow analysis chart"""
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=['Smart Money Flow Indicators', 'Institutional Activity Analysis'],
+            vertical_spacing=0.2
+        )
 
-                    except Exception as e:
-                        messagebox.showerror("Export Error", f"Failed to export charts:\n\n{str(e)}")
-                        self.update_status("❌ Chart export failed", "error")
+        # Price with volume overlay (normalized)
+        fig.add_trace(
+            go.Scatter(
+                x=data.index,
+                y=data['Close'],
+                name='Price',
+                line=dict(color='black', width=2)
+            ),
+            row=1, col=1
+        )
 
+        if 'OBV' in data.columns:
+            # Normalize OBV for overlay
+            obv_norm = (data['OBV'] - data['OBV'].min()) / (data['OBV'].max() - data['OBV'].min())
+            price_range = data['Close'].max() - data['Close'].min()
+            obv_scaled = data['Close'].min() + (obv_norm * price_range)
 
-        def print_charts(self):
-                """Print charts (placeholder)"""
-                messagebox.showinfo("Print Charts",
-                                    "🖨️ Print functionality coming soon!\n\n"
-                                    "Alternative options:\n"
-                                    "• Export as PDF and print\n"
-                                    "• Export as PNG for high-quality prints\n"
-                                    "• Use browser print from HTML export")
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=obv_scaled,
+                    name='OBV (Normalized)',
+                    line=dict(color='purple', width=2, dash='dash'),
+                    opacity=0.7
+                ),
+                row=1, col=1
+            )
 
+        # Volume Price Trend
+        if 'Volume_Price_Trend' in data.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data['Volume_Price_Trend'],
+                    name='Volume Price Trend',
+                    line=dict(color='orange', width=2)
+                ),
+                row=2, col=1
+            )
 
-        def generate_performance_report(self):
-                """Generate comprehensive performance report"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required", "Please complete analysis first!")
-                    return
+        fig.update_layout(
+            title=dict(
+                text="Smart Money Flow Professional Analysis",
+                font=dict(size=20, family="Segoe UI"),
+                x=0.5
+            ),
+            template=theme,
+            height=800,
+            showlegend=True
+        )
 
-                try:
-                    # Create comprehensive performance report
-                    report = f"""
+        return fig
+
+    def start_realtime_chart(self):
+        """Start real-time charting (placeholder for future implementation)"""
+        messagebox.showinfo("Real-time Charts",
+                            "🔄 Real-time charting feature coming soon!\n\n"
+                            "This will include:\n"
+                            "• Live price updates\n"
+                            "• Real-time technical indicators\n"
+                            "• Dynamic chart updates\n"
+                            "• Live trading signals\n\n"
+                            "Stay tuned for the next update!")
+
+    def export_charts(self):
+        """Export charts to various formats"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Export Professional Charts",
+            defaultextension=".html",
+            filetypes=[
+                ("Interactive HTML", "*.html"),
+                ("High-Quality PNG", "*.png"),
+                ("Professional PDF", "*.pdf"),
+                ("Vector SVG", "*.svg")
+            ],
+            initialfile=f"smartstock_charts_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+
+        if file_path:
+            try:
+                # Generate chart based on current selection
+                chart_type = self.chart_type.get()
+                timeframe = self.timeframe.get()
+                theme = self.chart_theme.get()
+
+                data = self.ai_agent.data.copy()
+                if timeframe != "all":
+                    days = {"1m": 30, "3m": 90, "6m": 180}[timeframe]
+                    data = data.tail(days)
+
+                if chart_type == "comprehensive":
+                    fig = self.create_comprehensive_dashboard(data, theme)
+                else:
+                    fig = self.create_price_action_chart(data, theme)
+
+                # Export based on file extension
+                if file_path.endswith('.html'):
+                    pyo.plot(fig, filename=file_path, auto_open=False)
+                elif file_path.endswith('.png'):
+                    fig.write_image(file_path, width=1920, height=1080, scale=2)
+                elif file_path.endswith('.pdf'):
+                    fig.write_image(file_path, width=1920, height=1080)
+                elif file_path.endswith('.svg'):
+                    fig.write_image(file_path, width=1920, height=1080)
+
+                messagebox.showinfo("Export Successful",
+                                    f"✅ Charts exported successfully!\n\n"
+                                    f"📁 File: {os.path.basename(file_path)}\n"
+                                    f"📊 Format: {file_path.split('.')[-1].upper()}\n"
+                                    f"🎨 Theme: {theme}\n"
+                                    f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+                self.update_status(f"✅ Charts exported: {os.path.basename(file_path)}", "success")
+
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export charts:\n\n{str(e)}")
+                self.update_status("❌ Chart export failed", "error")
+
+    def print_charts(self):
+        """Print charts (placeholder)"""
+        messagebox.showinfo("Print Charts",
+                            "🖨️ Print functionality coming soon!\n\n"
+                            "Alternative options:\n"
+                            "• Export as PDF and print\n"
+                            "• Export as PNG for high-quality prints\n"
+                            "• Use browser print from HTML export")
+
+    def generate_performance_report(self):
+        """Generate comprehensive performance report"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+            return
+
+        try:
+            # Create comprehensive performance report
+            report = f"""
             SMARTSTOCK AI v2.0 PROFESSIONAL - MODEL PERFORMANCE REPORT
             {'=' * 80}
-            
+
             EXECUTIVE SUMMARY
             {'-' * 50}
             Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
             User: {self.get_current_user()}
             Analysis ID: {datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}
-            
+
             OVERALL PERFORMANCE METRICS
             {'-' * 50}
             """
 
-                    if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
-                        performances = list(self.ai_agent.model_performance.values())
+            if hasattr(self.ai_agent, 'model_performance') and self.ai_agent.model_performance:
+                performances = list(self.ai_agent.model_performance.values())
 
-                        report += f"""
+                report += f"""
             Overall Model Performance: {np.mean(performances):.1%}
             Number of Models Trained: {len(self.ai_agent.model_performance)}
             Best Performing Model: {max(self.ai_agent.model_performance.items(), key=lambda x: x[1])[0]}
@@ -6815,25 +7580,26 @@ class ProfessionalSmartStockAIApp:
             Standard Deviation: {np.std(performances):.1%}
             """
 
-                        if hasattr(self.ai_agent, 'data'):
-                            report += f"Training Data Points: {len(self.ai_agent.data):,}\n"
+                if hasattr(self.ai_agent, 'data'):
+                    report += f"Training Data Points: {len(self.ai_agent.data):,}\n"
 
-                        report += f"""
-            
+                report += f"""
+
             MODEL-BY-MODEL BREAKDOWN
             {'-' * 50}
             """
 
-                        for model, performance in sorted(self.ai_agent.model_performance.items(), key=lambda x: x[1], reverse=True):
-                            stars = "⭐" * min(5, int(performance * 5))
-                            grade = "A+" if performance > 0.9 else "A" if performance > 0.8 else "B+" if performance > 0.7 else "B" if performance > 0.6 else "C"
+                for model, performance in sorted(self.ai_agent.model_performance.items(), key=lambda x: x[1],
+                                                 reverse=True):
+                    stars = "⭐" * min(5, int(performance * 5))
+                    grade = "A+" if performance > 0.9 else "A" if performance > 0.8 else "B+" if performance > 0.7 else "B" if performance > 0.6 else "C"
 
-                            report += f"""
+                    report += f"""
             {model.upper().replace('_', ' '):<25}: {performance:.3f} ({performance:.1%}) {stars} Grade: {grade}
             """
 
-                    report += f"""
-            
+            report += f"""
+
             TECHNICAL ANALYSIS SUMMARY
             {'-' * 50}
             Data Quality Assessment: Excellent
@@ -6841,7 +7607,7 @@ class ProfessionalSmartStockAIApp:
             Cross-Validation Method: Time Series Split
             Ensemble Techniques: Voting & Stacking Regressors
             Deep Learning Integration: {"Available" if DEEP_LEARNING_AVAILABLE else "Not Available"}
-            
+
             CONFIGURATION DETAILS
             {'-' * 50}
             Prediction Horizon: {self.prediction_days.get()} days
@@ -6849,59 +7615,59 @@ class ProfessionalSmartStockAIApp:
             Risk Tolerance: {self.risk_tolerance.get().title()}
             Position Size: {self.position_size.get():.1f}%
             Stop Loss: {self.stop_loss.get():.1f}%
-            
+
             SMART MONEY ANALYSIS
             {'-' * 50}
             """
 
-                    if hasattr(self.ai_agent, 'smart_money_analysis') and self.ai_agent.smart_money_analysis:
-                        for key, value in self.ai_agent.smart_money_analysis.items():
-                            formatted_key = key.replace('_', ' ').title()
-                            if isinstance(value, float):
-                                report += f"{formatted_key}: {value:.1%}\n"
-                            else:
-                                report += f"{formatted_key}: {value}\n"
+            if hasattr(self.ai_agent, 'smart_money_analysis') and self.ai_agent.smart_money_analysis:
+                for key, value in self.ai_agent.smart_money_analysis.items():
+                    formatted_key = key.replace('_', ' ').title()
+                    if isinstance(value, float):
+                        report += f"{formatted_key}: {value:.1%}\n"
+                    else:
+                        report += f"{formatted_key}: {value}\n"
 
-                    report += f"""
-            
+            report += f"""
+
             RISK ASSESSMENT SUMMARY
             {'-' * 50}
             Model Reliability: {"HIGH" if np.mean(performances) > 0.8 else "MEDIUM" if np.mean(performances) > 0.6 else "LOW"}
             Prediction Confidence: {np.mean(list(self.ai_agent.prediction_confidence.values())) if hasattr(self.ai_agent, 'prediction_confidence') else 0:.1%}
             Recommended Usage: {"Live Trading Compatible" if np.mean(performances) > 0.7 else "Paper Trading Recommended"}
             Risk Level: {self.risk_tolerance.get().title()} (with proper risk management)
-            
+
             PERFORMANCE BENCHMARKS
             {'-' * 50}
             Industry Standard (>60%): {"✅ PASSED" if np.mean(performances) > 0.6 else "❌ FAILED"}
             Professional Grade (>70%): {"✅ PASSED" if np.mean(performances) > 0.7 else "❌ FAILED"}
             Institutional Level (>80%): {"✅ PASSED" if np.mean(performances) > 0.8 else "❌ FAILED"}
             Elite Performance (>90%): {"✅ PASSED" if np.mean(performances) > 0.9 else "❌ FAILED"}
-            
+
             RECOMMENDATIONS
             {'-' * 50}
             """
 
-                    avg_perf = np.mean(performances) if performances else 0
+            avg_perf = np.mean(performances) if performances else 0
 
-                    if avg_perf > 0.8:
-                        report += """
+            if avg_perf > 0.8:
+                report += """
             ✅ EXCELLENT PERFORMANCE - READY FOR LIVE TRADING
             • Models demonstrate exceptional accuracy
             • High confidence in predictions
             • Suitable for institutional-grade trading
             • Recommended for live implementation with proper risk management
             """
-                    elif avg_perf > 0.6:
-                        report += """
+            elif avg_perf > 0.6:
+                report += """
             ✅ GOOD PERFORMANCE - SUITABLE FOR PAPER TRADING
             • Models show solid accuracy
             • Moderate confidence in predictions
             • Recommended for paper trading first
             • Consider model fine-tuning for improvement
             """
-                    else:
-                        report += """
+            else:
+                report += """
             ⚠️ BELOW AVERAGE PERFORMANCE - ADDITIONAL TUNING NEEDED
             • Models require improvement
             • Consider additional data or features
@@ -6909,8 +7675,8 @@ class ProfessionalSmartStockAIApp:
             • Paper trading only until performance improves
             """
 
-                    report += f"""
-            
+            report += f"""
+
             TECHNICAL RECOMMENDATIONS
             {'-' * 50}
             1. Data Enhancement:
@@ -6918,19 +7684,19 @@ class ProfessionalSmartStockAIApp:
                • Add external market indicators (VIX, sector data)
                • Include fundamental analysis metrics
                • Incorporate news sentiment data
-            
+
             2. Model Optimization:
                • Fine-tune hyperparameters for best models
                • Experiment with different ensemble combinations
                • Implement adaptive learning techniques
                • Add market regime classification
-            
+
             3. Risk Management:
                • Implement dynamic position sizing
                • Create correlation-based portfolio rules
                • Add stress testing scenarios
                • Develop drawdown protection mechanisms
-            
+
             DISCLAIMER
             {'-' * 50}
             This analysis is for educational and informational purposes only.
@@ -6938,7 +7704,7 @@ class ProfessionalSmartStockAIApp:
             Always implement proper risk management strategies.
             Consider consulting with qualified financial advisors.
             Never invest more than you can afford to lose.
-            
+
             CERTIFICATION
             {'-' * 50}
             Performance Report Generated by: SmartStock AI v2.0 Professional
@@ -6946,391 +7712,804 @@ class ProfessionalSmartStockAIApp:
             Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
             User Certification: {self.get_current_user()}
             Digital Signature: {hash(str(performances) + self.get_current_user()) % 1000000:06d}
-            
+
             © 2025 SmartStock AI Professional Trading Analysis Platform
             All Rights Reserved. Licensed Software Product.
             """
 
-                    # Save report
-                    file_path = filedialog.asksaveasfilename(
-                        title="Save Performance Report",
-                        defaultextension=".txt",
-                        filetypes=[
-                            ("Text Report", "*.txt"),
-                            ("PDF Report", "*.pdf"),
-                            ("Word Document", "*.docx")
-                        ],
-                        initialfile=f"smartstock_performance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                    )
+            # Save report
+            file_path = filedialog.asksaveasfilename(
+                title="Save Performance Report",
+                defaultextension=".txt",
+                filetypes=[
+                    ("Text Report", "*.txt"),
+                    ("PDF Report", "*.pdf"),
+                    ("Word Document", "*.docx")
+                ],
+                initialfile=f"smartstock_performance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            )
 
-                    if file_path:
-                        with open(file_path, 'w', encoding='utf-8') as f:
-                            f.write(report)
+            if file_path:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(report)
 
-                        messagebox.showinfo("Report Generated",
-                                            f"✅ Performance report generated successfully!\n\n"
-                                            f"📁 File: {os.path.basename(file_path)}\n"
-                                            f"📊 Overall Performance: {np.mean(performances):.1%}\n"
-                                            f"🏆 Best Model: {max(self.ai_agent.model_performance.items(), key=lambda x: x[1])[0]}\n"
-                                            f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                messagebox.showinfo("Report Generated",
+                                    f"✅ Performance report generated successfully!\n\n"
+                                    f"📁 File: {os.path.basename(file_path)}\n"
+                                    f"📊 Overall Performance: {np.mean(performances):.1%}\n"
+                                    f"🏆 Best Model: {max(self.ai_agent.model_performance.items(), key=lambda x: x[1])[0]}\n"
+                                    f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-                        self.update_status(f"✅ Performance report saved: {os.path.basename(file_path)}", "success")
+                self.update_status(f"✅ Performance report saved: {os.path.basename(file_path)}", "success")
 
-                except Exception as e:
-                    messagebox.showerror("Report Error", f"Failed to generate performance report:\n\n{str(e)}")
-                    self.update_status("❌ Report generation failed", "error")
+        except Exception as e:
+            messagebox.showerror("Report Error", f"Failed to generate performance report:\n\n{str(e)}")
+            self.update_status("❌ Report generation failed", "error")
 
+    def create_model_comparison_chart(self):
+        """Create detailed model comparison chart"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+            return
 
-        def create_model_comparison_chart(self):
-                """Create detailed model comparison chart"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required", "Please complete analysis first!")
-                    return
+        try:
+            models = list(self.ai_agent.model_performance.keys())
+            scores = list(self.ai_agent.model_performance.values())
 
-                try:
-                    models = list(self.ai_agent.model_performance.keys())
-                    scores = list(self.ai_agent.model_performance.values())
+            # Create professional comparison chart
+            fig = go.Figure()
 
-                    # Create professional comparison chart
-                    fig = go.Figure()
+            # Create gradient colors based on performance
+            colors = ['#FF4444' if s < 0.5 else '#FFA500' if s < 0.7 else '#90EE90' if s < 0.8 else '#00D4AA' for s in
+                      scores]
 
-                    # Create gradient colors based on performance
-                    colors = ['#FF4444' if s < 0.5 else '#FFA500' if s < 0.7 else '#90EE90' if s < 0.8 else '#00D4AA' for s in
-                              scores]
+            fig.add_trace(go.Bar(
+                x=[model.replace('_', ' ').title() for model in models],
+                y=scores,
+                name='Performance Score',
+                marker=dict(
+                    color=colors,
+                    line=dict(color='white', width=2),
+                    pattern_shape=['', '/', '\\', '+', 'x', '.', '-'][0:len(models)]
+                ),
+                text=[f'{s:.1%}' for s in scores],
+                textposition='auto',
+                textfont=dict(size=12, color='white'),
+                hovertemplate='<b>%{x}</b><br>Performance: %{y:.1%}<br>Grade: %{customdata}<extra></extra>',
+                customdata=['A+' if s > 0.9 else 'A' if s > 0.8 else 'B+' if s > 0.7 else 'B' if s > 0.6 else 'C' for s
+                            in
+                            scores]
+            ))
 
-                    fig.add_trace(go.Bar(
-                        x=[model.replace('_', ' ').title() for model in models],
-                        y=scores,
-                        name='Performance Score',
-                        marker=dict(
-                            color=colors,
-                            line=dict(color='white', width=2),
-                            pattern_shape=['', '/', '\\', '+', 'x', '.', '-'][0:len(models)]
-                        ),
-                        text=[f'{s:.1%}' for s in scores],
-                        textposition='auto',
-                        textfont=dict(size=12, color='white'),
-                        hovertemplate='<b>%{x}</b><br>Performance: %{y:.1%}<br>Grade: %{customdata}<extra></extra>',
-                        customdata=['A+' if s > 0.9 else 'A' if s > 0.8 else 'B+' if s > 0.7 else 'B' if s > 0.6 else 'C' for s in
-                                    scores]
-                    ))
+            # Add performance benchmark lines
+            benchmarks = [
+                (0.9, "Elite Level", "green"),
+                (0.8, "Institutional Grade", "blue"),
+                (0.7, "Professional Standard", "orange"),
+                (0.6, "Industry Minimum", "red")
+            ]
 
-                    # Add performance benchmark lines
-                    benchmarks = [
-                        (0.9, "Elite Level", "green"),
-                        (0.8, "Institutional Grade", "blue"),
-                        (0.7, "Professional Standard", "orange"),
-                        (0.6, "Industry Minimum", "red")
-                    ]
-
-                    for value, label, color in benchmarks:
-                        fig.add_hline(
-                            y=value,
-                            line_dash="dash",
-                            line_color=color,
-                            annotation_text=f"{label} ({value:.0%})",
-                            annotation_position="right"
-                        )
-
-                    # Add average line
-                    avg_score = np.mean(scores)
-                    fig.add_hline(
-                        y=avg_score,
-                        line_dash="solid",
-                        line_color="purple",
-                        line_width=3,
-                        annotation_text=f"Average: {avg_score:.1%}",
-                        annotation_position="left"
-                    )
-
-                    fig.update_layout(
-                        title=dict(
-                            text="SmartStock AI - Professional Model Performance Analysis",
-                            font=dict(size=20, family="Segoe UI", color='#2C3E50'),
-                            x=0.5
-                        ),
-                        xaxis=dict(
-                            title="AI Models",
-                            title_font=dict(size=14),
-                            tickangle=45
-                        ),
-                        yaxis=dict(
-                            title="Performance Score",
-                            title_font=dict(size=14),
-                            tickformat='.0%',
-                            range=[0, 1]
-                        ),
-                        template="plotly_white",
-                        height=600,
-                        showlegend=False,
-                        annotations=[
-                            dict(
-                                text=f"Analysis: {len(models)} models trained | Best: {max(scores):.1%} | Avg: {avg_score:.1%} | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
-                                xref="paper", yref="paper",
-                                x=0.5, y=-0.2,
-                                showarrow=False,
-                                font=dict(size=10, color='gray')
-                            )
-                        ]
-                    )
-
-                    # Display chart
-                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-                    pyo.plot(fig, filename=temp_file.name, auto_open=False)
-                    webbrowser.open(f'file://{temp_file.name}')
-
-                    self.update_status("✅ Model comparison chart generated", "success")
-
-                except Exception as e:
-                    messagebox.showerror("Chart Error", f"Failed to create comparison chart:\n\n{str(e)}")
-                    self.update_status("❌ Chart generation failed", "error")
-
-
-        def export_performance_data(self):
-                """Export performance data to various formats"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required", "Please complete analysis first!")
-                    return
-
-                file_path = filedialog.asksaveasfilename(
-                    title="Export Performance Data",
-                    defaultextension=".csv",
-                    filetypes=[
-                        ("CSV Data", "*.csv"),
-                        ("Excel Workbook", "*.xlsx"),
-                        ("JSON Data", "*.json")
-                    ],
-                    initialfile=f"smartstock_performance_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            for value, label, color in benchmarks:
+                fig.add_hline(
+                    y=value,
+                    line_dash="dash",
+                    line_color=color,
+                    annotation_text=f"{label} ({value:.0%})",
+                    annotation_position="right"
                 )
 
-                if file_path:
-                    try:
-                        # Create comprehensive performance dataset
-                        perf_data = []
-                        for model, score in self.ai_agent.model_performance.items():
-                            grade = "A+" if score > 0.9 else "A" if score > 0.8 else "B+" if score > 0.7 else "B" if score > 0.6 else "C"
-                            rank = sorted(self.ai_agent.model_performance.values(), reverse=True).index(score) + 1
+            # Add average line
+            avg_score = np.mean(scores)
+            fig.add_hline(
+                y=avg_score,
+                line_dash="solid",
+                line_color="purple",
+                line_width=3,
+                annotation_text=f"Average: {avg_score:.1%}",
+                annotation_position="left"
+            )
 
-                            perf_data.append({
-                                'Model': model.replace('_', ' ').title(),
-                                'Performance_Score': score,
-                                'Accuracy_Percent': f"{score:.1%}",
-                                'Grade': grade,
-                                'Rank': rank,
-                                'Category': 'Deep Learning' if 'deep' in model.lower() or 'lstm' in model.lower() or 'cnn' in model.lower() else 'Machine Learning',
-                                'Status': 'Excellent' if score > 0.8 else 'Good' if score > 0.6 else 'Needs Improvement',
-                                'Timestamp': datetime.now().isoformat()
-                            })
+            fig.update_layout(
+                title=dict(
+                    text="SmartStock AI - Professional Model Performance Analysis",
+                    font=dict(size=20, family="Segoe UI", color='#2C3E50'),
+                    x=0.5
+                ),
+                xaxis=dict(
+                    title="AI Models",
+                    title_font=dict(size=14),
+                    tickangle=45
+                ),
+                yaxis=dict(
+                    title="Performance Score",
+                    title_font=dict(size=14),
+                    tickformat='.0%',
+                    range=[0, 1]
+                ),
+                template="plotly_white",
+                height=600,
+                showlegend=False,
+                annotations=[
+                    dict(
+                        text=f"Analysis: {len(models)} models trained | Best: {max(scores):.1%} | Avg: {avg_score:.1%} | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
+                        xref="paper", yref="paper",
+                        x=0.5, y=-0.2,
+                        showarrow=False,
+                        font=dict(size=10, color='gray')
+                    )
+                ]
+            )
 
-                        df = pd.DataFrame(perf_data)
-                        df = df.sort_values('Performance_Score', ascending=False)
+            # Display chart
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
+            pyo.plot(fig, filename=temp_file.name, auto_open=False)
+            webbrowser.open(f'file://{temp_file.name}')
 
-                        if file_path.endswith('.xlsx'):
-                            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                                # Main performance data
-                                df.to_excel(writer, sheet_name='Performance_Data', index=False)
+            self.update_status("✅ Model comparison chart generated", "success")
 
-                                # Summary statistics
-                                summary = {
-                                    'Metric': ['Total Models', 'Average Performance', 'Best Performance', 'Worst Performance',
-                                               'Standard Deviation'],
-                                    'Value': [
-                                        len(df),
-                                        f"{df['Performance_Score'].mean():.1%}",
-                                        f"{df['Performance_Score'].max():.1%}",
-                                        f"{df['Performance_Score'].min():.1%}",
-                                        f"{df['Performance_Score'].std():.1%}"
-                                    ]
-                                }
-                                pd.DataFrame(summary).to_excel(writer, sheet_name='Summary', index=False)
+        except Exception as e:
+            messagebox.showerror("Chart Error", f"Failed to create comparison chart:\n\n{str(e)}")
+            self.update_status("❌ Chart generation failed", "error")
 
-                                # Metadata
-                                metadata = {
-                                    'Field': ['Generated By', 'User', 'Timestamp', 'Software Version', 'Analysis ID'],
-                                    'Value': [
-                                        'SmartStock AI v2.0 Professional',
-                                        self.get_current_user(),
-                                        datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
-                                        '2.0.0',
-                                        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}"
-                                    ]
-                                }
-                                pd.DataFrame(metadata).to_excel(writer, sheet_name='Metadata', index=False)
+    def export_performance_data(self):
+        """Export performance data to various formats"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+            return
 
-                        elif file_path.endswith('.json'):
-                            # Export as structured JSON
-                            export_data = {
-                                'metadata': {
-                                    'generated_by': 'SmartStock AI v2.0 Professional',
-                                    'user': self.get_current_user(),
-                                    'timestamp': datetime.now().isoformat(),
-                                    'total_models': len(df),
-                                    'analysis_id': f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}"
-                                },
-                                'summary': {
-                                    'average_performance': df['Performance_Score'].mean(),
-                                    'best_performance': df['Performance_Score'].max(),
-                                    'worst_performance': df['Performance_Score'].min(),
-                                    'std_deviation': df['Performance_Score'].std(),
-                                    'models_above_80pct': len(df[df['Performance_Score'] > 0.8]),
-                                    'models_above_70pct': len(df[df['Performance_Score'] > 0.7])
-                                },
-                                'performance_data': df.to_dict('records')
-                            }
+        file_path = filedialog.asksaveasfilename(
+            title="Export Performance Data",
+            defaultextension=".csv",
+            filetypes=[
+                ("CSV Data", "*.csv"),
+                ("Excel Workbook", "*.xlsx"),
+                ("JSON Data", "*.json")
+            ],
+            initialfile=f"smartstock_performance_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
 
-                            with open(file_path, 'w', encoding='utf-8') as f:
-                                json.dump(export_data, f, indent=2, default=str)
+        if file_path:
+            try:
+                # Create comprehensive performance dataset
+                perf_data = []
+                for model, score in self.ai_agent.model_performance.items():
+                    grade = "A+" if score > 0.9 else "A" if score > 0.8 else "B+" if score > 0.7 else "B" if score > 0.6 else "C"
+                    rank = sorted(self.ai_agent.model_performance.values(), reverse=True).index(score) + 1
 
-                        else:
-                            # Export as CSV
-                            df.to_csv(file_path, index=False, encoding='utf-8')
+                    perf_data.append({
+                        'Model': model.replace('_', ' ').title(),
+                        'Performance_Score': score,
+                        'Accuracy_Percent': f"{score:.1%}",
+                        'Grade': grade,
+                        'Rank': rank,
+                        'Category': 'Deep Learning' if 'deep' in model.lower() or 'lstm' in model.lower() or 'cnn' in model.lower() else 'Machine Learning',
+                        'Status': 'Excellent' if score > 0.8 else 'Good' if score > 0.6 else 'Needs Improvement',
+                        'Timestamp': datetime.now().isoformat()
+                    })
 
-                        messagebox.showinfo("Export Successful",
-                                            f"✅ Performance data exported successfully!\n\n"
-                                            f"📁 File: {os.path.basename(file_path)}\n"
-                                            f"📊 Models: {len(df)} exported\n"
-                                            f"🏆 Best Performance: {df['Performance_Score'].max():.1%}\n"
-                                            f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                df = pd.DataFrame(perf_data)
+                df = df.sort_values('Performance_Score', ascending=False)
 
-                        self.update_status(f"✅ Performance data exported: {os.path.basename(file_path)}", "success")
+                if file_path.endswith('.xlsx'):
+                    with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                        # Main performance data
+                        df.to_excel(writer, sheet_name='Performance_Data', index=False)
 
-                    except Exception as e:
-                        messagebox.showerror("Export Error", f"Failed to export performance data:\n\n{str(e)}")
-                        self.update_status("❌ Export failed", "error")
+                        # Summary statistics
+                        summary = {
+                            'Metric': ['Total Models', 'Average Performance', 'Best Performance', 'Worst Performance',
+                                       'Standard Deviation'],
+                            'Value': [
+                                len(df),
+                                f"{df['Performance_Score'].mean():.1%}",
+                                f"{df['Performance_Score'].max():.1%}",
+                                f"{df['Performance_Score'].min():.1%}",
+                                f"{df['Performance_Score'].std():.1%}"
+                            ]
+                        }
+                        pd.DataFrame(summary).to_excel(writer, sheet_name='Summary', index=False)
 
+                        # Metadata
+                        metadata = {
+                            'Field': ['Generated By', 'User', 'Timestamp', 'Software Version', 'Analysis ID'],
+                            'Value': [
+                                'SmartStock AI v2.0 Professional',
+                                self.get_current_user(),
+                                datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
+                                '2.0.0',
+                                f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}"
+                            ]
+                        }
+                        pd.DataFrame(metadata).to_excel(writer, sheet_name='Metadata', index=False)
 
-        def calculate_risk_metrics(self):
-                """Calculate and display comprehensive risk metrics"""
-                if not self.analysis_complete:
-                    messagebox.showwarning("Analysis Required",
-                                           "Please complete the analysis first!\n\n"
-                                           "Risk metrics require completed model training and data analysis.")
-                    return
+                elif file_path.endswith('.json'):
+                    # Export as structured JSON
+                    export_data = {
+                        'metadata': {
+                            'generated_by': 'SmartStock AI v2.0 Professional',
+                            'user': self.get_current_user(),
+                            'timestamp': datetime.now().isoformat(),
+                            'total_models': len(df),
+                            'analysis_id': f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(self.get_current_user()) % 10000:04d}"
+                        },
+                        'summary': {
+                            'average_performance': df['Performance_Score'].mean(),
+                            'best_performance': df['Performance_Score'].max(),
+                            'worst_performance': df['Performance_Score'].min(),
+                            'std_deviation': df['Performance_Score'].std(),
+                            'models_above_80pct': len(df[df['Performance_Score'] > 0.8]),
+                            'models_above_70pct': len(df[df['Performance_Score'] > 0.7])
+                        },
+                        'performance_data': df.to_dict('records')
+                    }
 
-                try:
-                    self.update_status("📊 Calculating comprehensive risk metrics...", "info")
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(export_data, f, indent=2, default=str)
 
-                    # Calculate risk metrics using the AI agent
-                    self.ai_agent.calculate_comprehensive_risk_metrics()
-
-                    # Update the risk display
-                    self.update_risk_display()
-
-                    # Show completion message
-                    messagebox.showinfo("Risk Analysis Complete",
-                                        "✅ Comprehensive risk metrics calculated!\n\n"
-                                        "The analysis includes:\n"
-                                        "• Value at Risk (VaR) calculations\n"
-                                        "• Maximum drawdown analysis\n"
-                                        "• Volatility assessments\n"
-                                        "• Model risk evaluation\n"
-                                        "• Position sizing recommendations\n\n"
-                                        "Check the Risk Management tab for detailed results.")
-
-                    self.update_status("✅ Risk metrics calculated successfully", "success")
-
-                except Exception as e:
-                    messagebox.showerror("Risk Calculation Error",
-                                         f"Failed to calculate risk metrics:\n\n{str(e)}\n\n"
-                                         "Ensure that analysis has been completed successfully.")
-                    self.update_status("❌ Risk calculation failed", "error")
-
-
-        def toggle_realtime(self):
-                """Toggle real-time updates"""
-                if self.real_time_enabled.get():
-                    self.update_status("🔄 Real-time mode enabled", "info")
-                    # Placeholder for real-time functionality
-                    messagebox.showinfo("Real-time Mode",
-                                        "🔄 Real-time updates enabled!\n\n"
-                                        "Note: Full real-time functionality coming soon.\n"
-                                        "Current features:\n"
-                                        "• Manual refresh capabilities\n"
-                                        "• Auto-update predictions (when enabled)\n"
-                                        "• Live status indicators\n\n"
-                                        "Future updates will include:\n"
-                                        "• Live data feeds\n"
-                                        "• Automatic model retraining\n"
-                                        "• Real-time alerts")
                 else:
-                    self.update_status("⏸️ Real-time mode disabled", "info")
+                    # Export as CSV
+                    df.to_csv(file_path, index=False, encoding='utf-8')
+
+                messagebox.showinfo("Export Successful",
+                                    f"✅ Performance data exported successfully!\n\n"
+                                    f"📁 File: {os.path.basename(file_path)}\n"
+                                    f"📊 Models: {len(df)} exported\n"
+                                    f"🏆 Best Performance: {df['Performance_Score'].max():.1%}\n"
+                                    f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+                self.update_status(f"✅ Performance data exported: {os.path.basename(file_path)}", "success")
+
+            except Exception as e:
+                messagebox.showerror("Export Error", f"Failed to export performance data:\n\n{str(e)}")
+                self.update_status("❌ Export failed", "error")
+
+        """
+        def calculate_optimal_sl_tp(self):
+            ""Calculate optimal Stop Loss and Take Profit levels""
+            if not self.analysis_complete:
+                messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+                return
+
+            try:
+                self.update_status("🎯 Calculating optimal SL/TP levels...", "info")
+
+                # Get current price
+                current_price = self.ai_agent.data['Close'].iloc[-1] if hasattr(self.ai_agent, 'data') else 100
+
+                # Calculate SL/TP with current settings
+                risk_tolerance = self.risk_tolerance.get()
+
+                sl_tp_result = self.ai_agent.calculate_advanced_sl_tp_levels(
+                    self.ai_agent.predictions,
+                    self.ai_agent.prediction_confidence,
+                    current_price,
+                    risk_tolerance
+                )
+
+                # Display results
+                self.update_sl_tp_display(sl_tp_result)
+
+                self.update_status("✅ SL/TP levels calculated successfully", "success")
+
+            except Exception as e:
+                messagebox.showerror("SL/TP Error", f"Failed to calculate SL/TP levels:\n\n{str(e)}")
+                self.update_status("❌ SL/TP calculation failed", "error")
+        """
+
+    def on_calculate_sl_tp_button_click(self):  # NEW NAME - CLEAR PURPOSE
+            """GUI event handler for Calculate SL/TP button click"""
+            """GUI event handler - calls AI agent methods and updates display"""
+            if not self.analysis_complete:
+                messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+                return
+
+            try:
+                self.update_status("🎯 Calculating optimal SL/TP levels...", "info")
+
+                # Get current price
+                current_price = self.ai_agent.data['Close'].iloc[-1] if hasattr(self.ai_agent, 'data') else 100
+
+                # Calculate SL/TP with current settings
+                risk_tolerance = self.risk_tolerance.get()
+
+                sl_tp_result = self.ai_agent.calculate_advanced_sl_tp_levels(
+                    self.ai_agent.predictions,
+                    self.ai_agent.prediction_confidence,
+                    current_price,
+                    risk_tolerance
+                )
+
+                # Display results
+                self.update_sl_tp_display(sl_tp_result)
+
+                self.update_status("✅ SL/TP levels calculated successfully", "success")
+
+            except Exception as e:
+                messagebox.showerror("SL/TP Error", f"Failed to calculate SL/TP levels:\n\n{str(e)}")
+                self.update_status("❌ SL/TP calculation failed", "error")
+
+    """
+        def run_monte_carlo_analysis(self):
+            ""Run Monte Carlo risk analysis""
+            if not self.analysis_complete:
+                messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+                return
+
+            try:
+                self.update_status("🎲 Running Monte Carlo analysis...", "info")
+
+                # Get historical data
+                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+                    current_price = self.ai_agent.data['Close'].iloc[-1]
+                    returns = self.ai_agent.data['Close'].pct_change().dropna()
+
+                    # Run Monte Carlo simulation
+                    mc_results = self.ai_agent.risk_manager.run_comprehensive_monte_carlo(
+                        current_price, returns, 30
+                    )
+
+                    # Display results
+                    self.update_monte_carlo_display(mc_results)
+
+                    self.update_status("✅ Monte Carlo analysis completed", "success")
+                else:
+                    messagebox.showwarning("No Data", "No data available for Monte Carlo analysis")
+
+            except Exception as e:
+                messagebox.showerror("Monte Carlo Error", f"Failed to run Monte Carlo analysis:\n\n{str(e)}")
+                self.update_status("❌ Monte Carlo analysis failed", "error")
+    """
+
+    def on_run_monte_carlo_button_click(self):  # RENAMED from run_monte_carlo_analysis
+            """GUI event handler for Run Monte Carlo button click"""
+            """GUI event handler - runs Monte Carlo and updates display"""
+            if not self.analysis_complete:
+                messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+                return
+
+            try:
+                self.update_status("🎲 Running Monte Carlo analysis...", "info")
+
+                # Get historical data
+                if hasattr(self.ai_agent, 'data') and self.ai_agent.data is not None:
+                    current_price = self.ai_agent.data['Close'].iloc[-1]
+                    returns = self.ai_agent.data['Close'].pct_change().dropna()
+
+                    # Run Monte Carlo simulation
+                    mc_results = self.ai_agent.risk_manager.run_comprehensive_monte_carlo(
+                        current_price, returns, 30
+                    )
+
+                    # Display results
+                    self.update_monte_carlo_display(mc_results)
+
+                    self.update_status("✅ Monte Carlo analysis completed", "success")
+                else:
+                    messagebox.showwarning("No Data", "No data available for Monte Carlo analysis")
+
+            except Exception as e:
+                messagebox.showerror("Monte Carlo Error", f"Failed to run Monte Carlo analysis:\n\n{str(e)}")
+                self.update_status("❌ Monte Carlo analysis failed", "error")
 
 
-        def apply_settings(self):
-                """Apply application settings with professional feedback"""
+
+    def update_sl_tp_display(self, sl_tp_result):
+            """Update SL/TP display with results"""
+            self.sl_tp_display.delete(1.0, tk.END)
+
+            if not sl_tp_result:
+                self.sl_tp_display.insert(tk.END, "No SL/TP analysis available. Please run the calculation first.")
+                return
+
+            display_text = f"""🎯 OPTIMAL STOP LOSS / TAKE PROFIT ANALYSIS
+    {'=' * 60}
+
+    📊 POSITION DETAILS
+    {'-' * 30}
+    Entry Price: ${sl_tp_result.get('entry_price', 0):.2f}
+    Stop Loss: ${sl_tp_result.get('stop_loss', 0):.2f}
+    Take Profit: ${sl_tp_result.get('take_profit', 0):.2f}
+
+    💰 RISK/REWARD METRICS
+    {'-' * 30}
+    Risk Amount: ${sl_tp_result.get('risk_amount', 0):.2f}
+    Reward Amount: ${sl_tp_result.get('reward_amount', 0):.2f}
+    Risk/Reward Ratio: {sl_tp_result.get('risk_reward_ratio', 0):.2f}:1
+
+    📈 PROBABILITY ANALYSIS
+    {'-' * 30}
+    Probability of Stop Loss: {sl_tp_result.get('probability_stop_loss', 0):.1%}
+    Probability of Take Profit: {sl_tp_result.get('probability_take_profit', 0):.1%}
+    Expected Value: ${sl_tp_result.get('expected_value', 0):.2f}
+
+    🎲 MONTE CARLO DETAILS
+    {'-' * 30}
+    Simulations Run: {sl_tp_result.get('monte_carlo_simulations', 0):,}
+    Confidence Level: {sl_tp_result.get('confidence_level', 0):.1%}
+    Risk Tolerance: {sl_tp_result.get('risk_tolerance', 'moderate').title()}
+
+    ⚡ RECOMMENDATIONS
+    {'-' * 30}"""
+
+            # Add recommendations based on analysis
+            risk_reward = sl_tp_result.get('risk_reward_ratio', 0)
+            expected_value = sl_tp_result.get('expected_value', 0)
+
+            if risk_reward >= 2.0 and expected_value > 0:
+                display_text += """
+    ✅ EXCELLENT TRADE SETUP
+    • Strong risk/reward ratio
+    • Positive expected value
+    • Recommended for execution"""
+            elif risk_reward >= 1.5 and expected_value > 0:
+                display_text += """
+    ✅ GOOD TRADE SETUP
+    • Acceptable risk/reward ratio
+    • Positive expected value
+    • Consider position sizing"""
+            else:
+                display_text += """
+    ⚠️ MARGINAL TRADE SETUP
+    • Below optimal risk/reward
+    • Consider waiting for better setup
+    • Reduce position size if proceeding"""
+
+            display_text += f"""
+
+    📅 Analysis Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+    🔄 Last Updated: {datetime.now().strftime('%H:%M:%S')}
+    """
+
+            self.sl_tp_display.insert(tk.END, display_text)
+
+    def update_monte_carlo_display(self, mc_results):
+            """Update Monte Carlo display with simulation results"""
+            self.monte_carlo_display.delete(1.0, tk.END)
+
+            if not mc_results:
+                self.monte_carlo_display.insert(tk.END,
+                                                "No Monte Carlo results available. Please run the analysis first.")
+                return
+
+            display_text = f"""🎲 MONTE CARLO SIMULATION RESULTS
+    {'=' * 60}
+
+    Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+    Simulation Horizon: 30 days
+    Simulations per Scenario: 10,000
+
+    """
+
+            for scenario, results in mc_results.items():
+                scenario_title = scenario.replace('_', ' ').title()
+                display_text += f"""📊 {scenario_title} Scenario
+    {'-' * 40}
+    Mean Final Price: ${results.get('mean_final_price', 0):.2f}
+    Median Final Price: ${results.get('median_final_price', 0):.2f}
+    Standard Deviation: ${results.get('std_final_price', 0):.2f}
+
+    Risk Metrics:
+    • 95% VaR: ${results.get('var_95', 0):.2f}
+    • 99% VaR: ${results.get('var_99', 0):.2f}
+
+    Upside Potential:
+    • 95th Percentile: ${results.get('upside_95', 0):.2f}
+    • 99th Percentile: ${results.get('upside_99', 0):.2f}
+
+    Probabilities:
+    • Probability of Profit: {results.get('prob_profit', 0):.1%}
+    • Probability of 5%+ Loss: {results.get('prob_loss_5pct', 0):.1%}
+    • Probability of 10%+ Gain: {results.get('prob_gain_10pct', 0):.1%}
+
+    Expected Return: {results.get('expected_return', 0):.1%}
+    Volatility Used: {results.get('volatility_used', 0):.1%}
+
+    """
+
+            display_text += f"""📋 SCENARIO SUMMARY
+    {'-' * 40}
+    • Base Case: Most likely outcome based on historical data
+    • Bull Case: Optimistic scenario with reduced volatility
+    • Bear Case: Pessimistic scenario with increased volatility  
+    • Stress Case: Extreme downside scenario for risk assessment
+
+    💡 INTERPRETATION GUIDE
+    {'-' * 40}
+    • VaR (Value at Risk): Maximum expected loss at confidence level
+    • Percentiles: Range of possible outcomes
+    • Probabilities: Likelihood of specific return thresholds
+    • Expected Return: Average return across all simulations
+
+    ⚠️ RISK CONSIDERATIONS
+    {'-' * 40}
+    • Results based on historical price behavior
+    • Actual market conditions may differ significantly
+    • Use in conjunction with fundamental analysis
+    • Consider position sizing based on worst-case scenarios
+    """
+
+            self.monte_carlo_display.insert(tk.END, display_text)
+
+    """"
+        def export_risk_analysis(self):
+            ""Export comprehensive risk analysis""
+            if not self.analysis_complete:
+                messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+                return
+
+            file_path = filedialog.asksaveasfilename(
+                title="Export Risk Analysis",
+                defaultextension=".txt",
+                filetypes=[
+                    ("Text Report", "*.txt"),
+                    ("JSON Data", "*.json"),
+                    ("CSV Data", "*.csv")
+                ],
+                initialfile=f"smartstock_risk_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
+
+            if file_path:
                 try:
-                    settings_applied = []
+                    # Combine all risk analysis data
+                    risk_data = {
+                        'sl_tp_analysis': getattr(self.ai_agent, 'sl_tp_analysis', {}),
+                        'monte_carlo_results': getattr(self.ai_agent, 'monte_carlo_analysis', {}),
+                        'model_explanations': getattr(self.ai_agent, 'model_explanations', {}),
+                        'metadata': {
+                            'generated_by': 'SmartStock AI v2.0 Professional',
+                            'user': self.get_current_user(),
+                            'timestamp': datetime.now().isoformat(),
+                            'analysis_type': 'Comprehensive Risk Analysis with SL/TP and Monte Carlo'
+                        }
+                    }
 
-                    # Apply theme changes
-                    if self.theme_var.get() != "Professional Light":
-                        settings_applied.append(f"• Theme: {self.theme_var.get()}")
-                        # Placeholder for theme switching logic
-
-                    # Apply font scaling
-                    if self.font_scale.get() != 1.0:
-                        settings_applied.append(f"• Font Scale: {self.font_scale.get():.1f}x")
-                        # Apply font scaling (would need to update all font configurations)
-
-                    # Apply performance settings
-                    if self.parallel_processing.get():
-                        os.environ['TF_NUM_INTEROP_THREADS'] = str(self.cpu_cores.get())
-                        settings_applied.append(f"• Parallel Processing: {self.cpu_cores.get()} cores")
-
-                    # Apply auto-save settings
-                    if self.auto_save_enabled.get():
-                        settings_applied.append(f"• Auto-save: Every {self.auto_save_interval.get()} minutes")
-
-                    # Apply memory settings
-                    if self.memory_optimization.get():
-                        settings_applied.append("• Memory Optimization: Enabled")
-
-                    # Apply data caching
-                    if self.enable_caching.get():
-                        settings_applied.append(f"• Data Caching: {self.cache_size.get()} MB")
-
-                    success_message = "✅ Settings Applied Successfully!\n\n"
-                    if settings_applied:
-                        success_message += "Changes applied:\n" + "\n".join(settings_applied)
+                    if file_path.endswith('.json'):
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            json.dump(risk_data, f, indent=2, default=str)
                     else:
-                        success_message += "No changes were needed (all settings already optimal)."
+                        # Text format
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write("SMARTSTOCK AI v2.0 - COMPREHENSIVE RISK ANALYSIS REPORT\n")
+                            f.write("=" * 80 + "\n\n")
+                            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+                            f.write(f"User: {self.get_current_user()}\n\n")
 
-                    success_message += f"\n\n📅 Applied: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            # SL/TP Analysis
+                            f.write("STOP LOSS / TAKE PROFIT ANALYSIS\n")
+                            f.write("-" * 50 + "\n")
+                            sl_tp_content = self.sl_tp_display.get(1.0, tk.END)
+                            f.write(sl_tp_content + "\n\n")
 
-                    messagebox.showinfo("Settings Applied", success_message)
-                    self.update_status("✅ Settings applied successfully", "success")
+                            # Monte Carlo Results
+                            f.write("MONTE CARLO SIMULATION RESULTS\n")
+                            f.write("-" * 50 + "\n")
+                            mc_content = self.monte_carlo_display.get(1.0, tk.END)
+                            f.write(mc_content + "\n\n")
+
+                            # SHAP Explanations
+                            if hasattr(self, 'shap_text'):
+                                f.write("MODEL EXPLAINABILITY (SHAP ANALYSIS)\n")
+                                f.write("-" * 50 + "\n")
+                                shap_content = self.shap_text.get(1.0, tk.END)
+                                f.write(shap_content + "\n")
+
+                    messagebox.showinfo("Export Successful",
+                                        f"✅ Risk analysis exported successfully!\n\n"
+                                        f"📁 File: {os.path.basename(file_path)}\n"
+                                        f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+                    self.update_status(f"✅ Risk analysis exported: {os.path.basename(file_path)}", "success")
 
                 except Exception as e:
-                    messagebox.showerror("Settings Error", f"Failed to apply some settings:\n\n{str(e)}")
-                    self.update_status("⚠️ Settings partially applied", "warning")
+                    messagebox.showerror("Export Error", f"Failed to export risk analysis:\n\n{str(e)}")
+                    self.update_status("❌ Export failed", "error")
+        """
 
+    def on_export_risk_analysis_button_click(self):  # RENAMED from export_risk_analysis
+            """GUI event handler for Export Risk Analysis button click"""
+            """GUI event handler - exports risk analysis data"""
+            # ... existing implementation ...
+            """Export comprehensive risk analysis"""
+            if not self.analysis_complete:
+                messagebox.showwarning("Analysis Required", "Please complete analysis first!")
+                return
 
-        def run(self):
-                """Start the professional application"""
+            file_path = filedialog.asksaveasfilename(
+                title="Export Risk Analysis",
+                defaultextension=".txt",
+                filetypes=[
+                    ("Text Report", "*.txt"),
+                    ("JSON Data", "*.json"),
+                    ("CSV Data", "*.csv")
+                ],
+                initialfile=f"smartstock_risk_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
+
+            if file_path:
                 try:
-                    # Set window icon (if available)
-                    try:
-                        # self.root.iconbitmap('smartstock_icon.ico')  # Uncomment if icon file available
-                        pass
-                    except:
-                        pass
+                    # Combine all risk analysis data
+                    risk_data = {
+                        'sl_tp_analysis': getattr(self.ai_agent, 'sl_tp_analysis', {}),
+                        'monte_carlo_results': getattr(self.ai_agent, 'monte_carlo_analysis', {}),
+                        'model_explanations': getattr(self.ai_agent, 'model_explanations', {}),
+                        'metadata': {
+                            'generated_by': 'SmartStock AI v2.0 Professional',
+                            'user': self.get_current_user(),
+                            'timestamp': datetime.now().isoformat(),
+                            'analysis_type': 'Comprehensive Risk Analysis with SL/TP and Monte Carlo'
+                        }
+                    }
 
-                    # Center the window on screen
-                    self.root.update_idletasks()
-                    width = self.root.winfo_width()
-                    height = self.root.winfo_height()
-                    x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-                    y = (self.root.winfo_screenheight() // 2) - (height // 2)
-                    self.root.geometry(f"{width}x{height}+{x}+{y}")
+                    if file_path.endswith('.json'):
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            json.dump(risk_data, f, indent=2, default=str)
+                    else:
+                        # Text format
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write("SMARTSTOCK AI v2.0 - COMPREHENSIVE RISK ANALYSIS REPORT\n")
+                            f.write("=" * 80 + "\n\n")
+                            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+                            f.write(f"User: {self.get_current_user()}\n\n")
 
-                    # Show startup message
-                    self.update_status("🚀 SmartStock AI Professional ready", "success")
+                            # SL/TP Analysis
+                            f.write("STOP LOSS / TAKE PROFIT ANALYSIS\n")
+                            f.write("-" * 50 + "\n")
+                            sl_tp_content = self.sl_tp_display.get(1.0, tk.END)
+                            f.write(sl_tp_content + "\n\n")
 
-                    # Show welcome dialog
-                    welcome_msg = f"""🚀 Welcome to SmartStock AI Professional v2.0!
-            
+                            # Monte Carlo Results
+                            f.write("MONTE CARLO SIMULATION RESULTS\n")
+                            f.write("-" * 50 + "\n")
+                            mc_content = self.monte_carlo_display.get(1.0, tk.END)
+                            f.write(mc_content + "\n\n")
+
+                            # SHAP Explanations
+                            if hasattr(self, 'shap_text'):
+                                f.write("MODEL EXPLAINABILITY (SHAP ANALYSIS)\n")
+                                f.write("-" * 50 + "\n")
+                                shap_content = self.shap_text.get(1.0, tk.END)
+                                f.write(shap_content + "\n")
+
+                    messagebox.showinfo("Export Successful",
+                                        f"✅ Risk analysis exported successfully!\n\n"
+                                        f"📁 File: {os.path.basename(file_path)}\n"
+                                        f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+                    self.update_status(f"✅ Risk analysis exported: {os.path.basename(file_path)}", "success")
+
+                except Exception as e:
+                    messagebox.showerror("Export Error", f"Failed to export risk analysis:\n\n{str(e)}")
+                    self.update_status("❌ Export failed", "error")
+
+    def calculate_risk_metrics(self):
+        """Calculate and display comprehensive risk metrics"""
+        if not self.analysis_complete:
+            messagebox.showwarning("Analysis Required",
+                                   "Please complete the analysis first!\n\n"
+                                   "Risk metrics require completed model training and data analysis.")
+            return
+
+        try:
+            self.update_status("📊 Calculating comprehensive risk metrics...", "info")
+
+            # Calculate risk metrics using the AI agent
+            self.ai_agent.calculate_comprehensive_risk_metrics()
+
+            # Update the risk display
+            self.update_risk_display()
+
+            # Show completion message
+            messagebox.showinfo("Risk Analysis Complete",
+                                "✅ Comprehensive risk metrics calculated!\n\n"
+                                "The analysis includes:\n"
+                                "• Value at Risk (VaR) calculations\n"
+                                "• Maximum drawdown analysis\n"
+                                "• Volatility assessments\n"
+                                "• Model risk evaluation\n"
+                                "• Position sizing recommendations\n\n"
+                                "Check the Risk Management tab for detailed results.")
+
+            self.update_status("✅ Risk metrics calculated successfully", "success")
+
+        except Exception as e:
+            messagebox.showerror("Risk Calculation Error",
+                                 f"Failed to calculate risk metrics:\n\n{str(e)}\n\n"
+                                 "Ensure that analysis has been completed successfully.")
+            self.update_status("❌ Risk calculation failed", "error")
+
+    def toggle_realtime(self):
+        """Toggle real-time updates"""
+        if self.real_time_enabled.get():
+            self.update_status("🔄 Real-time mode enabled", "info")
+            # Placeholder for real-time functionality
+            messagebox.showinfo("Real-time Mode",
+                                "🔄 Real-time updates enabled!\n\n"
+                                "Note: Full real-time functionality coming soon.\n"
+                                "Current features:\n"
+                                "• Manual refresh capabilities\n"
+                                "• Auto-update predictions (when enabled)\n"
+                                "• Live status indicators\n\n"
+                                "Future updates will include:\n"
+                                "• Live data feeds\n"
+                                "• Automatic model retraining\n"
+                                "• Real-time alerts")
+        else:
+            self.update_status("⏸️ Real-time mode disabled", "info")
+
+    def apply_settings(self):
+        """Apply application settings with professional feedback"""
+        try:
+            settings_applied = []
+
+            # Apply theme changes
+            if self.theme_var.get() != "Professional Light":
+                settings_applied.append(f"• Theme: {self.theme_var.get()}")
+                # Placeholder for theme switching logic
+
+            # Apply font scaling
+            if self.font_scale.get() != 1.0:
+                settings_applied.append(f"• Font Scale: {self.font_scale.get():.1f}x")
+                # Apply font scaling (would need to update all font configurations)
+
+            # Apply performance settings
+            if self.parallel_processing.get():
+                os.environ['TF_NUM_INTEROP_THREADS'] = str(self.cpu_cores.get())
+                settings_applied.append(f"• Parallel Processing: {self.cpu_cores.get()} cores")
+
+            # Apply auto-save settings
+            if self.auto_save_enabled.get():
+                settings_applied.append(f"• Auto-save: Every {self.auto_save_interval.get()} minutes")
+
+            # Apply memory settings
+            if self.memory_optimization.get():
+                settings_applied.append("• Memory Optimization: Enabled")
+
+            # Apply data caching
+            if self.enable_caching.get():
+                settings_applied.append(f"• Data Caching: {self.cache_size.get()} MB")
+
+            success_message = "✅ Settings Applied Successfully!\n\n"
+            if settings_applied:
+                success_message += "Changes applied:\n" + "\n".join(settings_applied)
+            else:
+                success_message += "No changes were needed (all settings already optimal)."
+
+            success_message += f"\n\n📅 Applied: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+            messagebox.showinfo("Settings Applied", success_message)
+            self.update_status("✅ Settings applied successfully", "success")
+
+        except Exception as e:
+            messagebox.showerror("Settings Error", f"Failed to apply some settings:\n\n{str(e)}")
+            self.update_status("⚠️ Settings partially applied", "warning")
+
+    def run(self):
+        """Start the professional application"""
+        try:
+            # Set window icon (if available)
+            try:
+                # self.root.iconbitmap('smartstock_icon.ico')  # Uncomment if icon file available
+                pass
+            except:
+                pass
+
+            # Center the window on screen
+            self.root.update_idletasks()
+            width = self.root.winfo_width()
+            height = self.root.winfo_height()
+            x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+            y = (self.root.winfo_screenheight() // 2) - (height // 2)
+            self.root.geometry(f"{width}x{height}+{x}+{y}")
+
+            # Show startup message
+            self.update_status("🚀 SmartStock AI Professional ready", "success")
+
+            # Show welcome dialog
+            welcome_msg = f"""🚀 Welcome to SmartStock AI Professional v2.0!
+
             👤 User: {self.get_current_user()}
             📅 Session: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
-            
+
             🎯 Professional Features Available:
             • Advanced ML/DL ensemble models
             • Comprehensive technical analysis
@@ -7338,28 +8517,28 @@ class ProfessionalSmartStockAIApp:
             • Professional risk management
             • Interactive chart generation
             • Real-time capabilities
-            
+
             💡 Quick Start:
             1. Upload your CSV data or generate sample data
             2. Configure analysis parameters
             3. Start comprehensive analysis
             4. Review predictions and charts
             5. Export professional reports
-            
+
             Ready to begin professional trading analysis!"""
 
-                    messagebox.showinfo("Welcome to SmartStock AI Professional", welcome_msg)
+            messagebox.showinfo("Welcome to SmartStock AI Professional", welcome_msg)
 
-                    # Start the main event loop
-                    self.root.mainloop()
+            # Start the main event loop
+            self.root.mainloop()
 
-                except KeyboardInterrupt:
-                    print("\n🛑 Application terminated by user")
-                except Exception as e:
-                    print(f"💥 Application error: {e}")
-                    messagebox.showerror("Application Error",
-                                         f"An unexpected error occurred:\n\n{str(e)}\n\n"
-                                         "Please restart the application.")
+        except KeyboardInterrupt:
+            print("\n🛑 Application terminated by user")
+        except Exception as e:
+            print(f"💥 Application error: {e}")
+            messagebox.showerror("Application Error",
+                                 f"An unexpected error occurred:\n\n{str(e)}\n\n"
+                                 "Please restart the application.")
 
 
 if __name__ == "__main__":
