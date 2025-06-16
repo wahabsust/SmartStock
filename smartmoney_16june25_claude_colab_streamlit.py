@@ -1414,6 +1414,325 @@ class EnhancedStockMarketAIAgent:
         status_text.text("✅ ML model training completed")
         st.success(f"ML model training completed. {len(self.models)} models trained.")
 
+
+    def train_advanced_deep_learning_models(self, sequence_length=60, selected_dl_models=None):
+        """Train advanced deep learning models - EXACT COPY"""
+        if not DEEP_LEARNING_AVAILABLE:
+            st.warning("TensorFlow not available - skipping deep learning models")
+            return
+
+        if self.features is None:
+            raise ValueError("Features not prepared")
+
+        if selected_dl_models is None:
+            selected_dl_models = ['lstm', 'gru', 'cnn_lstm']
+
+        try:
+            # Prepare sequential data for deep learning
+            feature_cols = [col for col in self.features.columns
+                            if not col.startswith('Next_') and col != 'Price_Direction' and col != 'Price_Change_Pct']
+
+            X = self.features[feature_cols].fillna(0)
+            y_price = self.features['Next_Close'].fillna(method='ffill')
+
+            # Create sequences for LSTM/GRU
+            def create_sequences(data, target, seq_length):
+                X_seq, y_seq = [], []
+                for i in range(seq_length, len(data)):
+                    X_seq.append(data[i - seq_length:i])
+                    y_seq.append(target[i])
+                return np.array(X_seq), np.array(y_seq)
+
+            X_seq, y_seq = create_sequences(X.values, y_price.values, sequence_length)
+
+            if len(X_seq) == 0:
+                st.warning("Insufficient data for sequence creation")
+                return
+
+            # Split data
+            split_idx = int(len(X_seq) * 0.8)
+            X_train, X_test = X_seq[:split_idx], X_seq[split_idx:]
+            y_train, y_test = y_seq[:split_idx], y_seq[split_idx:]
+
+            # Scale data
+            scaler_X = MinMaxScaler()
+            scaler_y = MinMaxScaler()
+
+            # Reshape for scaling
+            n_samples, n_timesteps, n_features = X_train.shape
+            X_train_reshaped = X_train.reshape(-1, n_features)
+            X_train_scaled = scaler_X.fit_transform(X_train_reshaped)
+            X_train_scaled = X_train_scaled.reshape(n_samples, n_timesteps, n_features)
+
+            n_samples_test, n_timesteps_test, n_features_test = X_test.shape
+            X_test_reshaped = X_test.reshape(-1, n_features_test)
+            X_test_scaled = scaler_X.transform(X_test_reshaped)
+            X_test_scaled = X_test_scaled.reshape(n_samples_test, n_timesteps_test, n_features_test)
+
+            y_train_scaled = scaler_y.fit_transform(y_train.reshape(-1, 1)).flatten()
+            y_test_scaled = scaler_y.transform(y_test.reshape(-1, 1)).flatten()
+
+            self.deep_models = {}
+            dl_performance = {}
+
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            total_dl_models = len(selected_dl_models)
+
+            for idx, model_name in enumerate(selected_dl_models):
+                try:
+                    status_text.text(f"Training {model_name.upper()}...")
+                    progress_bar.progress((idx + 1) / total_dl_models)
+
+                    # Build model based on type
+                    if model_name == 'lstm':
+                        model = self._build_lstm_model(X_train_scaled.shape[1:])
+                    elif model_name == 'gru':
+                        model = self._build_gru_model(X_train_scaled.shape[1:])
+                    elif model_name == 'cnn_lstm':
+                        model = self._build_cnn_lstm_model(X_train_scaled.shape[1:])
+                    else:
+                        continue
+
+                    # Train model
+                    early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+                    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0.001)
+
+                    history = model.fit(
+                        X_train_scaled, y_train_scaled,
+                        epochs=50,
+                        batch_size=32,
+                        validation_split=0.2,
+                        callbacks=[early_stopping, reduce_lr],
+                        verbose=0
+                    )
+
+                    # Evaluate model
+                    y_pred_scaled = model.predict(X_test_scaled, verbose=0)
+                    y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
+
+                    # Calculate R² score
+                    score = r2_score(y_test, y_pred)
+
+                    self.deep_models[model_name] = {
+                        'model': model,
+                        'scaler_X': scaler_X,
+                        'scaler_y': scaler_y,
+                        'sequence_length': sequence_length
+                    }
+
+                    dl_performance[model_name] = score
+                    self.model_performance[model_name] = score
+
+                    st.success(f"  {model_name.upper()}: {score:.4f}")
+
+                except Exception as e:
+                    st.error(f"  Error training {model_name}: {str(e)}")
+                    continue
+
+            progress_bar.progress(1.0)
+            status_text.text("✅ Deep learning training completed!")
+
+            st.success(f"✅ Deep learning models trained: {len(dl_performance)} models")
+
+        except Exception as e:
+            st.error(f"Error in deep learning training: {str(e)}")
+
+
+    def _build_lstm_model(self, input_shape):
+        """Build LSTM model - EXACT COPY"""
+        model = Sequential([
+            LSTM(50, return_sequences=True, input_shape=input_shape),
+            Dropout(0.2),
+            LSTM(50, return_sequences=False),
+            Dropout(0.2),
+            Dense(25),
+            Dense(1)
+        ])
+
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+        return model
+
+
+    def _build_gru_model(self, input_shape):
+        """Build GRU model - EXACT COPY"""
+        model = Sequential([
+            GRU(50, return_sequences=True, input_shape=input_shape),
+            Dropout(0.2),
+            GRU(50, return_sequences=False),
+            Dropout(0.2),
+            Dense(25),
+            Dense(1)
+        ])
+
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+        return model
+
+
+    def _build_cnn_lstm_model(self, input_shape):
+        """Build CNN-LSTM hybrid model - EXACT COPY"""
+        model = Sequential([
+            Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=input_shape),
+            Conv1D(filters=64, kernel_size=3, activation='relu'),
+            MaxPooling1D(pool_size=2),
+            LSTM(50),
+            Dropout(0.2),
+            Dense(50),
+            Dense(1)
+        ])
+
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+        return model
+
+
+    def make_enhanced_predictions(self):
+        """Make enhanced predictions with all models - EXACT COPY"""
+        if not self.models and not getattr(self, 'deep_models', {}):
+            st.warning("No trained models available for predictions")
+            return {}, {}
+
+        try:
+            predictions = {}
+            confidence_scores = {}
+
+            # Get current features
+            feature_cols = [col for col in self.features.columns
+                            if not col.startswith('Next_') and col != 'Price_Direction' and col != 'Price_Change_Pct']
+
+            X_current = self.features[feature_cols].fillna(0).iloc[-1:]
+
+            # ML model predictions
+            for model_name, model in self.models.items():
+                try:
+                    if model_name in self.scalers:
+                        X_scaled = self.scalers[model_name].transform(X_current)
+                        pred = model.predict(X_scaled)[0]
+                    else:
+                        pred = model.predict(X_current)[0]
+
+                    predictions[model_name] = pred
+                    confidence_scores[model_name] = self.model_performance.get(model_name, 0.5)
+
+                except Exception as e:
+                    st.warning(f"Error predicting with {model_name}: {e}")
+                    continue
+
+            # Deep learning model predictions
+            if hasattr(self, 'deep_models') and self.deep_models:
+                for model_name, model_dict in self.deep_models.items():
+                    try:
+                        model = model_dict['model']
+                        scaler_X = model_dict['scaler_X']
+                        scaler_y = model_dict['scaler_y']
+                        seq_length = model_dict['sequence_length']
+
+                        # Prepare sequence data
+                        X_full = self.features[feature_cols].fillna(0)
+                        if len(X_full) >= seq_length:
+                            X_seq = X_full.tail(seq_length).values.reshape(1, seq_length, -1)
+
+                            # Scale the sequence
+                            n_samples, n_timesteps, n_features = X_seq.shape
+                            X_seq_reshaped = X_seq.reshape(-1, n_features)
+                            X_seq_scaled = scaler_X.transform(X_seq_reshaped)
+                            X_seq_scaled = X_seq_scaled.reshape(n_samples, n_timesteps, n_features)
+
+                            # Predict
+                            pred_scaled = model.predict(X_seq_scaled, verbose=0)[0][0]
+                            pred = scaler_y.inverse_transform([[pred_scaled]])[0][0]
+
+                            predictions[model_name] = pred
+                            confidence_scores[model_name] = self.model_performance.get(model_name, 0.5)
+
+                    except Exception as e:
+                        st.warning(f"Error predicting with {model_name}: {e}")
+                        continue
+
+            # Calculate ensemble predictions
+            if predictions:
+                # Weighted average based on performance
+                weights = [confidence_scores.get(model, 0.5) for model in predictions.keys()]
+                total_weight = sum(weights)
+
+                if total_weight > 0:
+                    weighted_pred = sum(pred * weight for pred, weight in zip(predictions.values(), weights)) / total_weight
+                    weighted_conf = sum(weights) / len(weights)
+
+                    predictions['ensemble'] = weighted_pred
+                    confidence_scores['ensemble'] = weighted_conf
+
+                    # Final price prediction
+                    predictions['price'] = weighted_pred
+                    confidence_scores['price'] = weighted_conf
+
+                    # Direction prediction (simplified)
+                    current_price = self.data['Close'].iloc[-1]
+                    direction_prob = 0.5 + (weighted_pred - current_price) / current_price
+                    direction_prob = max(0.1, min(0.9, direction_prob))
+
+                    predictions['direction'] = direction_prob
+                    confidence_scores['direction'] = weighted_conf
+
+            self.predictions = predictions
+            self.prediction_confidence = confidence_scores
+
+            return predictions, confidence_scores
+
+        except Exception as e:
+            st.error(f"Error making predictions: {str(e)}")
+            return {}, {}
+
+
+    def generate_shap_explanations(self):
+        """Generate SHAP explanations for models - EXACT COPY"""
+        if not self.shap_manager:
+            st.warning("SHAP manager not available")
+            return
+
+        try:
+            # Prepare feature data
+            feature_cols = [col for col in self.features.columns
+                            if not col.startswith('Next_') and col != 'Price_Direction' and col != 'Price_Change_Pct']
+
+            X = self.features[feature_cols].fillna(0)
+
+            # Split data for training sample
+            split_idx = int(len(X) * 0.8)
+            X_train = X[:split_idx]
+
+            explanations = {}
+
+            # Generate explanations for ML models
+            for model_name, model in self.models.items():
+                try:
+                    # Create SHAP explainer
+                    explainer = self.shap_manager.create_explainer(model, X_train, model_name)
+
+                    if explainer:
+                        # Calculate SHAP values for recent data
+                        recent_data = X.tail(20)  # Last 20 data points
+                        shap_values = self.shap_manager.calculate_shap_values(model_name, recent_data)
+
+                        if shap_values is not None:
+                            # Generate explanation summary
+                            latest_prediction = self.predictions.get(model_name, 0)
+                            explanation = self.shap_manager.generate_explanation_summary(
+                                model_name, feature_cols, latest_prediction
+                            )
+                            explanations[model_name] = explanation
+
+                except Exception as e:
+                    st.warning(f"Could not generate SHAP explanation for {model_name}: {e}")
+                    continue
+
+            self.model_explanations = explanations
+            st.success(f"✅ SHAP explanations generated for {len(explanations)} models")
+
+        except Exception as e:
+            st.error(f"Error generating SHAP explanations: {str(e)}")
+
+
 # =================== SESSION STATE INITIALIZATION ===================
 if 'ai_agent' not in st.session_state:
     st.session_state.ai_agent = EnhancedStockMarketAIAgent()
@@ -4280,6 +4599,56 @@ def create_csv_export_data():
 
     return csv_string.getvalue()
 
+
+def create_excel_export_data():
+    """Create Excel export data - EXACT COPY"""
+    export_data = []
+
+    # Header row
+    export_data.append([
+        'Timestamp', 'User', 'Current_Price', 'Predicted_Price', 'Price_Change_Pct',
+        'Model_Confidence', 'Direction_Signal', 'Risk_Level', 'Position_Size_Rec',
+        'Stop_Loss', 'Take_Profit', 'Risk_Reward_Ratio', 'Expected_Value'
+    ])
+
+    # Data rows
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+    current_price = st.session_state.ai_agent.data['Close'].iloc[-1]
+
+    if hasattr(st.session_state.ai_agent, 'predictions') and st.session_state.ai_agent.predictions:
+        predictions = st.session_state.ai_agent.predictions
+        confidence = st.session_state.ai_agent.prediction_confidence
+
+        predicted_price = predictions.get('price', current_price)
+        price_change_pct = ((predicted_price - current_price) / current_price) * 100
+        model_confidence = confidence.get('price', 0.5)
+        direction_prob = predictions.get('direction', 0.5)
+
+        direction_signal = "BULLISH" if direction_prob > 0.6 else "BEARISH" if direction_prob < 0.4 else "NEUTRAL"
+        risk_level = "LOW" if model_confidence > 0.8 else "MEDIUM" if model_confidence > 0.6 else "HIGH"
+
+        # SL/TP data if available
+        sl_tp = getattr(st.session_state.ai_agent, 'sl_tp_analysis', {})
+        stop_loss = sl_tp.get('stop_loss', current_price * 0.95)
+        take_profit = sl_tp.get('take_profit', current_price * 1.05)
+        risk_reward = sl_tp.get('risk_reward_ratio', 0)
+        expected_value = sl_tp.get('expected_value', 0)
+
+        position_size = sl_tp.get('recommended_position_size', 0.05) * 100
+
+        export_data.append([
+            current_time, 'wahabsust', current_price, predicted_price, price_change_pct,
+            model_confidence, direction_signal, risk_level, f"{position_size:.1f}%",
+            stop_loss, take_profit, risk_reward, expected_value
+        ])
+
+    # Convert to CSV string
+    csv_string = io.StringIO()
+    for row in export_data:
+        csv_string.write(','.join([str(cell) for cell in row]) + '\n')
+
+    return csv_string.getvalue()
+
 def generate_professional_report():
     """Generate professional report - EXACT COPY"""
     report_data = generate_comprehensive_trading_report()
@@ -5739,15 +6108,17 @@ def create_comprehensive_professional_dashboard(data, theme):
         ]
     )
 
+
     # Update axes labels with professional formatting
-    fig.update_yaxes(title_text="Price ($)", row=1, col=1, titlefont=dict(size=12))
-    fig.update_yaxes(title_text="Volume", row=1, col=2, titlefont=dict(size=12))
-    fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100], titlefont=dict(size=12))
-    fig.update_yaxes(title_text="MACD", row=2, col=2, titlefont=dict(size=12))
-    fig.update_yaxes(title_text="Price ($)", row=3, col=1, titlefont=dict(size=12))
-    fig.update_yaxes(title_text="OBV", row=3, col=2, titlefont=dict(size=12))
-    fig.update_yaxes(title_text="Price ($)", row=4, col=1, titlefont=dict(size=12))
-    fig.update_yaxes(title_text="ATR", row=4, col=2, titlefont=dict(size=12))
+    fig.update_yaxes(title=dict(text="Price ($)", font=dict(size=12)), row=1, col=1)
+    fig.update_yaxes(title=dict(text="Volume", font=dict(size=12)), row=1, col=2)
+    fig.update_yaxes(title=dict(text="RSI", font=dict(size=12)), row=2, col=1, range=[0, 100])
+    fig.update_yaxes(title=dict(text="MACD", font=dict(size=12)), row=2, col=2)
+    fig.update_yaxes(title=dict(text="Price ($)", font=dict(size=12)), row=3, col=1)
+    fig.update_yaxes(title=dict(text="OBV", font=dict(size=12)), row=3, col=2)
+    fig.update_yaxes(title=dict(text="Price ($)", font=dict(size=12)), row=4, col=1)
+    fig.update_yaxes(title=dict(text="ATR", font=dict(size=12)), row=4, col=2)
+
 
     return fig
 
@@ -5859,7 +6230,8 @@ def create_advanced_price_action_chart(data, theme):
             x=0.5
         ),
         xaxis_title="Date",
-        yaxis_title="Price ($)",
+        #yaxis_title="Price ($)",
+        yaxis=dict(title=dict(text="Price ($)", font=dict(size=12))),
         template=template,
         height=700,
         showlegend=True,
@@ -5996,10 +6368,10 @@ def create_technical_indicators_deep_dive(data, theme):
     )
 
     # Update y-axis ranges for indicators
-    fig.update_yaxes(title_text="RSI", row=1, col=1, range=[0, 100])
-    fig.update_yaxes(title_text="MACD", row=2, col=1)
-    fig.update_yaxes(title_text="Stochastic", row=3, col=1, range=[0, 100])
-    fig.update_yaxes(title_text="Williams %R", row=4, col=1, range=[-100, 0])
+    fig.update_yaxes(title=dict(text="RSI", font=dict(size=12)), row=1, col=1, range=[0, 100])
+    fig.update_yaxes(title=dict(text="MACD", font=dict(size=12)), row=2, col=1)
+    fig.update_yaxes(title=dict(text="Stochastic", font=dict(size=12)), row=3, col=1, range=[0, 100])
+    fig.update_yaxes(title=dict(text="Williams %R", font=dict(size=12)), row=4, col=1, range=[-100, 0])
 
     return fig
 
@@ -6114,10 +6486,240 @@ def create_volume_smart_money_chart(data, theme):
             font=dict(size=20, family="Arial"),
             x=0.5
         ),
-        template=theme.lower().replace(' ', '_') if theme != "Custom" else "plotly_white",
+        template="plotly_white",
         height=900,
         showlegend=True,
         font=dict(family="Arial")
+    )
+
+    return fig
+
+
+def create_risk_assessment_charts(data, theme):
+    """Create risk assessment charts - EXACT COPY"""
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=[
+            'Volatility Analysis', 'Drawdown Analysis',
+            'Value at Risk (VaR)', 'Risk Metrics Summary'
+        ],
+        vertical_spacing=0.15,
+        horizontal_spacing=0.12
+    )
+
+    # Calculate returns and risk metrics
+    returns = data['Close'].pct_change().dropna()
+
+    # 1. Volatility Analysis
+    rolling_vol = returns.rolling(20).std() * np.sqrt(252)
+
+    fig.add_trace(
+        go.Scatter(
+            x=data.index[-len(rolling_vol):],
+            y=rolling_vol,
+            name='20-Day Volatility',
+            line=dict(color='orange', width=2)
+        ),
+        row=1, col=1
+    )
+
+    # Add volatility bands
+    avg_vol = rolling_vol.mean()
+    fig.add_hline(y=avg_vol, line_dash="dash", line_color="blue", row=1, col=1,
+                  annotation_text=f"Avg: {avg_vol:.1%}")
+
+    # 2. Drawdown Analysis
+    cumulative = (1 + returns).cumprod()
+    rolling_max = cumulative.expanding().max()
+    drawdown = (cumulative - rolling_max) / rolling_max
+
+    fig.add_trace(
+        go.Scatter(
+            x=data.index[-len(drawdown):],
+            y=drawdown * 100,
+            name='Drawdown %',
+            fill='tonexty',
+            line=dict(color='red', width=1)
+        ),
+        row=1, col=2
+    )
+
+    # 3. VaR Analysis
+    var_95 = np.percentile(returns, 5)
+    var_99 = np.percentile(returns, 1)
+
+    # VaR histogram
+    fig.add_trace(
+        go.Histogram(
+            x=returns * 100,
+            nbinsx=30,
+            name='Return Distribution',
+            opacity=0.7,
+            marker_color='lightblue'
+        ),
+        row=2, col=1
+    )
+
+    # VaR lines
+    fig.add_vline(x=var_95 * 100, line_dash="dash", line_color="orange", row=2, col=1,
+                  annotation_text=f"95% VaR: {var_95:.2%}")
+    fig.add_vline(x=var_99 * 100, line_dash="dash", line_color="red", row=2, col=1,
+                  annotation_text=f"99% VaR: {var_99:.2%}")
+
+    # 4. Risk Metrics Summary (text-based)
+    metrics_text = f"""
+    Daily Volatility: {returns.std():.3%}
+    Annual Volatility: {returns.std() * np.sqrt(252):.1%}
+    95% VaR: {abs(var_95):.2%}
+    99% VaR: {abs(var_99):.2%}
+    Max Drawdown: {abs(drawdown.min()):.1%}
+    Sharpe Ratio: {(returns.mean() / returns.std() * np.sqrt(252)):.2f}
+    """
+
+    fig.add_annotation(
+        text=metrics_text,
+        xref="x domain", yref="y domain",
+        x=0.1, y=0.9,
+        showarrow=False,
+        align="left",
+        font=dict(size=12),
+        row=2, col=2
+    )
+
+    fig.update_layout(
+        title="Comprehensive Risk Assessment Analysis",
+        template=theme.lower().replace(' ', '_') if theme != "Custom" else "plotly_white",
+        height=800,
+        showlegend=True
+    )
+
+    return fig
+
+
+def create_model_performance_visualization(theme):
+    """Create model performance visualization - EXACT COPY"""
+    if not hasattr(st.session_state.ai_agent, 'model_performance') or not st.session_state.ai_agent.model_performance:
+        # Create empty chart with message
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No model performance data available.<br>Complete analysis first to see performance metrics.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=16),
+            align="center"
+        )
+        fig.update_layout(
+            title="Model Performance Analysis",
+            template=theme.lower().replace(' ', '_') if theme != "Custom" else "plotly_white",
+            height=600
+        )
+        return fig
+
+    performances = st.session_state.ai_agent.model_performance
+
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=[
+            'Individual Model Performance', 'Performance Distribution',
+            'Model Category Comparison', 'Performance Trend'
+        ],
+        specs=[
+            [{"type": "bar"}, {"type": "histogram"}],
+            [{"type": "bar"}, {"type": "scatter"}]
+        ]
+    )
+
+    models = list(performances.keys())
+    scores = list(performances.values())
+
+    # 1. Individual Model Performance
+    colors = ['#00D4AA' if s > 0.8 else '#FFA500' if s > 0.7 else '#FF6B35' if s > 0.6 else '#FF4444' for s in scores]
+
+    fig.add_trace(
+        go.Bar(
+            x=[m.replace('_', ' ').title() for m in models],
+            y=scores,
+            name='Performance',
+            marker=dict(color=colors),
+            text=[f'{s:.1%}' for s in scores],
+            textposition='auto'
+        ),
+        row=1, col=1
+    )
+
+    # 2. Performance Distribution
+    fig.add_trace(
+        go.Histogram(
+            x=scores,
+            nbinsx=10,
+            name='Distribution',
+            marker_color='lightblue',
+            opacity=0.7
+        ),
+        row=1, col=2
+    )
+
+    # 3. Model Category Comparison
+    ml_models = {}
+    dl_models = {}
+
+    for model_name, performance in performances.items():
+        if any(keyword in model_name.lower() for keyword in ['lstm', 'gru', 'cnn']):
+            dl_models[model_name] = performance
+        else:
+            ml_models[model_name] = performance
+
+    categories = []
+    avg_performances = []
+
+    if ml_models:
+        categories.append('Machine Learning')
+        avg_performances.append(np.mean(list(ml_models.values())))
+
+    if dl_models:
+        categories.append('Deep Learning')
+        avg_performances.append(np.mean(list(dl_models.values())))
+
+    if categories:
+        fig.add_trace(
+            go.Bar(
+                x=categories,
+                y=avg_performances,
+                name='Category Average',
+                marker_color=['#1f77b4', '#ff7f0e'][:len(categories)],
+                text=[f'{p:.1%}' for p in avg_performances],
+                textposition='auto'
+            ),
+            row=2, col=1
+        )
+
+    # 4. Performance Trend (simulated)
+    time_periods = ['Initial', 'Optimized', 'Final']
+    trend_data = []
+
+    for model_name, performance in list(performances.items())[:3]:  # Top 3 models
+        # Simulate performance improvement
+        initial = performance * 0.8
+        optimized = performance * 0.9
+        final = performance
+
+        fig.add_trace(
+            go.Scatter(
+                x=time_periods,
+                y=[initial, optimized, final],
+                mode='lines+markers',
+                name=model_name.replace('_', ' ').title(),
+                line=dict(width=2)
+            ),
+            row=2, col=2
+        )
+
+    fig.update_layout(
+        title="Comprehensive Model Performance Dashboard",
+        template=theme.lower().replace(' ', '_') if theme != "Custom" else "plotly_white",
+        height=800,
+        showlegend=True
     )
 
     return fig
@@ -6697,6 +7299,281 @@ def share_charts_setup():
             st.info("☁️ Cloud storage integration coming soon!")
 
 # Continue with remaining pages...
+
+
+def display_benchmark_analysis():
+    """Display benchmark analysis - EXACT COPY"""
+    st.markdown("#### 📊 Industry Benchmark Analysis")
+
+    if not hasattr(st.session_state.ai_agent, 'model_performance') or not st.session_state.ai_agent.model_performance:
+        st.warning("No performance data available for benchmarking")
+        return
+
+    performances = st.session_state.ai_agent.model_performance
+    avg_performance = np.mean(list(performances.values()))
+
+    # Industry benchmarks
+    benchmarks = {
+        'Retail Trading Algorithms': 0.65,
+        'Professional Trading Systems': 0.75,
+        'Institutional Hedge Funds': 0.85,
+        'Quantitative Research Firms': 0.90,
+        'Elite Trading Firms': 0.95
+    }
+
+    # Benchmark comparison
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**🎯 Benchmark Comparison**")
+
+        benchmark_data = []
+        for benchmark_name, benchmark_score in benchmarks.items():
+            if avg_performance >= benchmark_score:
+                status = "✅ Exceeds"
+                color = "success"
+            elif avg_performance >= benchmark_score * 0.9:
+                status = "🟡 Approaches"
+                color = "warning"
+            else:
+                status = "🔴 Below"
+                color = "error"
+
+            benchmark_data.append({
+                'Benchmark': benchmark_name,
+                'Required': f"{benchmark_score:.1%}",
+                'Your Score': f"{avg_performance:.1%}",
+                'Status': status,
+                'Gap': f"{(avg_performance - benchmark_score):.1%}"
+            })
+
+        df_benchmarks = pd.DataFrame(benchmark_data)
+        st.dataframe(df_benchmarks, use_container_width=True)
+
+    with col2:
+        st.markdown("**📈 Performance Positioning**")
+
+        # Find closest benchmarks
+        position = "Elite Level"
+        for benchmark_name, benchmark_score in reversed(benchmarks.items()):
+            if avg_performance >= benchmark_score:
+                position = benchmark_name
+                break
+
+        st.metric("🏆 Performance Category", position)
+        st.metric("📊 Portfolio Score", f"{avg_performance:.1%}")
+
+        # Percentile calculation
+        scores_list = list(benchmarks.values()) + [avg_performance]
+        percentile = (sorted(scores_list).index(avg_performance) / len(scores_list)) * 100
+        st.metric("📊 Industry Percentile", f"{percentile:.0f}th")
+
+    # Benchmark visualization
+    fig = go.Figure()
+
+    benchmark_names = list(benchmarks.keys())
+    benchmark_scores = list(benchmarks.values())
+
+    # Add benchmark bars
+    fig.add_trace(go.Bar(
+        x=benchmark_names,
+        y=benchmark_scores,
+        name='Industry Benchmarks',
+        marker_color='lightblue',
+        opacity=0.7
+    ))
+
+    # Add portfolio performance line
+    fig.add_hline(
+        y=avg_performance,
+        line_dash="solid",
+        line_color="red",
+        line_width=3,
+        annotation_text=f"Your Portfolio: {avg_performance:.1%}"
+    )
+
+    fig.update_layout(
+        title="Industry Benchmark Comparison",
+        xaxis_title="Industry Categories",
+        yaxis_title="Performance Score",
+        yaxis=dict(tickformat='.0%'),
+        template="plotly_white",
+        height=400
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def display_model_diagnostics():
+    """Display model diagnostics - EXACT COPY"""
+    st.markdown("#### 🔧 Advanced Model Diagnostics")
+
+    if not hasattr(st.session_state.ai_agent, 'model_performance') or not st.session_state.ai_agent.model_performance:
+        st.warning("No model data available for diagnostics")
+        return
+
+    performances = st.session_state.ai_agent.model_performance
+
+    # Diagnostic tabs
+    diag_tab1, diag_tab2, diag_tab3 = st.tabs([
+        "🔍 Performance Diagnostics",
+        "⚠️ Model Health Check",
+        "🔧 Optimization Recommendations"
+    ])
+
+    with diag_tab1:
+        st.markdown("##### 📊 Performance Distribution Analysis")
+
+        scores = list(performances.values())
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("**📈 Statistical Metrics**")
+            st.write(f"• Mean: {np.mean(scores):.3f}")
+            st.write(f"• Median: {np.median(scores):.3f}")
+            st.write(f"• Std Dev: {np.std(scores):.3f}")
+            st.write(f"• Range: {max(scores) - min(scores):.3f}")
+
+        with col2:
+            st.markdown("**🎯 Quality Metrics**")
+            excellent = sum(1 for s in scores if s > 0.9)
+            good = sum(1 for s in scores if 0.8 < s <= 0.9)
+            average = sum(1 for s in scores if 0.7 < s <= 0.8)
+            poor = sum(1 for s in scores if s <= 0.7)
+
+            st.write(f"• Excellent (>90%): {excellent}")
+            st.write(f"• Good (80-90%): {good}")
+            st.write(f"• Average (70-80%): {average}")
+            st.write(f"• Poor (≤70%): {poor}")
+
+        with col3:
+            st.markdown("**⚖️ Consistency Analysis**")
+            consistency = 1 - (np.std(scores) / np.mean(scores))
+            st.write(f"• Consistency Index: {consistency:.1%}")
+
+            if consistency > 0.9:
+                consistency_level = "🟢 Very High"
+            elif consistency > 0.8:
+                consistency_level = "🟡 High"
+            elif consistency > 0.7:
+                consistency_level = "🟠 Moderate"
+            else:
+                consistency_level = "🔴 Low"
+
+            st.write(f"• Consistency Level: {consistency_level}")
+
+    with diag_tab2:
+        st.markdown("##### ⚠️ Model Health Assessment")
+
+        health_issues = []
+
+        # Check for underperforming models
+        poor_models = [name for name, perf in performances.items() if perf < 0.7]
+        if poor_models:
+            health_issues.append(f"🔴 Poor Performance: {', '.join(poor_models)}")
+
+        # Check for inconsistent performance
+        if np.std(list(performances.values())) > 0.15:
+            health_issues.append("🟠 High Performance Variance: Models show inconsistent results")
+
+        # Check model count
+        if len(performances) < 3:
+            health_issues.append("🟡 Limited Model Diversity: Consider adding more models")
+
+        if health_issues:
+            st.warning("**Health Issues Detected:**")
+            for issue in health_issues:
+                st.warning(issue)
+        else:
+            st.success("✅ **All Models Healthy**")
+            st.success("No significant health issues detected in model portfolio")
+
+    with diag_tab3:
+        st.markdown("##### 🔧 Optimization Recommendations")
+
+        recommendations = []
+
+        avg_perf = np.mean(list(performances.values()))
+
+        if avg_perf < 0.8:
+            recommendations.append(
+                "📈 **Improve Overall Performance**: Consider feature engineering and hyperparameter tuning")
+
+        if len([p for p in performances.values() if p < 0.7]) > 0:
+            recommendations.append("🔄 **Retrain Weak Models**: Some models need retraining or replacement")
+
+        if np.std(list(performances.values())) > 0.1:
+            recommendations.append("⚖️ **Balance Model Performance**: Reduce variance between models")
+
+        if len(performances) < 5:
+            recommendations.append("🤖 **Add More Models**: Increase ensemble diversity")
+
+        if not recommendations:
+            recommendations.append("✅ **Portfolio Optimized**: Current model portfolio is well-optimized")
+
+        for rec in recommendations:
+            st.info(rec)
+
+
+def display_portfolio_risk_analysis():
+    """Display portfolio risk analysis - EXACT COPY"""
+    st.markdown("#### 📊 Portfolio Risk Analysis")
+
+    if 'comprehensive_risk_metrics' not in st.session_state:
+        st.warning("Calculate risk metrics first to see portfolio analysis")
+        return
+
+    risk_metrics = st.session_state.comprehensive_risk_metrics
+
+    # Portfolio composition analysis
+    portfolio_value = risk_metrics.get('portfolio_value', 100000)
+    max_position = risk_metrics.get('max_position_size', 0.05)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**💰 Portfolio Composition**")
+        st.write(f"• **Total Value:** ${portfolio_value:,.0f}")
+        st.write(f"• **Max Position Size:** {max_position:.1%}")
+        st.write(f"• **Max Position Value:** ${portfolio_value * max_position:,.0f}")
+
+        # Risk budget analysis
+        daily_var = abs(risk_metrics.get('var_95', 0))
+        portfolio_var = portfolio_value * daily_var
+        st.write(f"• **Daily VaR (95%):** ${portfolio_var:,.0f}")
+
+        annual_var = portfolio_var * np.sqrt(252)
+        st.write(f"• **Annual VaR Est.:** ${annual_var:,.0f}")
+
+    with col2:
+        st.markdown("**⚠️ Risk Allocation**")
+
+        # Simulated portfolio positions (in real app, these would be actual positions)
+        positions = [
+            {"Asset": "Current Strategy", "Allocation": max_position, "Risk": daily_var},
+            {"Asset": "Cash Reserve", "Allocation": 1 - max_position, "Risk": 0.001}
+        ]
+
+        for pos in positions:
+            risk_contribution = pos["Allocation"] * pos["Risk"] * 100
+            st.write(f"• **{pos['Asset']}:** {pos['Allocation']:.1%} (Risk: {risk_contribution:.2f}%)")
+
+        # Portfolio heat calculation
+        portfolio_heat = sum(pos["Allocation"] * pos["Risk"] for pos in positions) * 100
+        st.write(f"• **Portfolio Heat:** {portfolio_heat:.2f}%")
+
+    # Risk concentration analysis
+    st.markdown("**🔥 Risk Concentration Analysis**")
+
+    concentration_threshold = st.session_state.get('portfolio_heat_threshold', 20) / 100
+
+    if max_position > concentration_threshold:
+        st.warning(
+            f"⚠️ **High Concentration Risk**: Position size ({max_position:.1%}) exceeds threshold ({concentration_threshold:.1%})")
+    else:
+        st.success(f"✅ **Diversification OK**: Position size within safe limits")
+
 
 def model_performance_analytics_page():
     """Model Performance Analytics Page - EXACT COPY"""
@@ -9579,6 +10456,254 @@ def display_kelly_optimization_analysis(sl_tp):
         Consider using a fractional Kelly approach (e.g., 25-50% of Kelly optimal) for more conservative growth.
         """)
 
+
+def display_monte_carlo_risk_analysis(mc_results):
+    """Display Monte Carlo risk analysis - EXACT COPY"""
+    st.markdown("#### ⚠️ Monte Carlo Risk Analysis")
+
+    scenarios = {k: v for k, v in mc_results.items() if k != 'portfolio_analysis'}
+
+    if not scenarios:
+        st.warning("No Monte Carlo scenarios available for risk analysis")
+        return
+
+    # Risk metrics summary
+    st.markdown("##### 📊 Risk Metrics by Scenario")
+
+    risk_data = []
+
+    for scenario_name, results in scenarios.items():
+        scenario_display_name = scenario_name.replace('_', ' ').title()
+
+        var_95 = results.get('var_95', 0)
+        var_99 = results.get('var_99', 0)
+        prob_loss_5pct = results.get('prob_loss_5pct', 0)
+        expected_return = results.get('expected_return', 0)
+
+        # Risk-adjusted return
+        volatility = results.get('volatility_used', 0.2)
+        if volatility > 0:
+            risk_adj_return = expected_return / volatility
+        else:
+            risk_adj_return = 0
+
+        risk_data.append({
+            'Scenario': scenario_display_name,
+            'Expected Return': f"{expected_return:.2%}",
+            '95% VaR': f"${var_95:.2f}",
+            '99% VaR': f"${var_99:.2f}",
+            'Prob Loss >5%': f"{prob_loss_5pct:.1%}",
+            'Risk-Adj Return': f"{risk_adj_return:.2f}",
+            'Volatility': f"{volatility:.1%}"
+        })
+
+    df_risk = pd.DataFrame(risk_data)
+    st.dataframe(df_risk, use_container_width=True)
+
+    # Risk visualization
+    st.markdown("##### 📊 Risk vs Return Analysis")
+
+    fig = go.Figure()
+
+    returns = [results.get('expected_return', 0) * 100 for results in scenarios.values()]
+    risks = [abs(results.get('var_95', 0) / st.session_state.ai_agent.data['Close'].iloc[-1]) * 100
+             for results in scenarios.values()]
+    scenario_names = [name.replace('_', ' ').title() for name in scenarios.keys()]
+
+    # Efficient frontier-style plot
+    fig.add_trace(go.Scatter(
+        x=risks,
+        y=returns,
+        mode='markers+text',
+        text=scenario_names,
+        textposition='top center',
+        marker=dict(
+            size=15,
+            color=returns,
+            colorscale='RdYlGn',
+            showscale=True,
+            colorbar=dict(title="Expected Return (%)")
+        ),
+        name='Risk-Return Profile'
+    ))
+
+    fig.update_layout(
+        title="Monte Carlo Risk-Return Analysis",
+        xaxis_title="Risk (VaR as % of Current Price)",
+        yaxis_title="Expected Return (%)",
+        template="plotly_white",
+        height=500
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Risk ranking
+    st.markdown("##### 🏆 Scenario Risk Ranking")
+
+    # Calculate composite risk score
+    for i, (scenario_name, results) in enumerate(scenarios.items()):
+        var_95_pct = abs(results.get('var_95', 0)) / st.session_state.ai_agent.data['Close'].iloc[-1]
+        prob_loss = results.get('prob_loss_5pct', 0)
+        volatility = results.get('volatility_used', 0.2)
+
+        # Composite risk score (lower is better)
+        risk_score = (var_95_pct * 0.4) + (prob_loss * 0.3) + (volatility * 0.3)
+
+        risk_data[i]['Risk Score'] = f"{risk_score:.3f}"
+
+        if risk_score < 0.1:
+            risk_data[i]['Risk Level'] = "🟢 Low"
+        elif risk_score < 0.2:
+            risk_data[i]['Risk Level'] = "🟡 Medium"
+        else:
+            risk_data[i]['Risk Level'] = "🔴 High"
+
+    # Sort by risk score
+    risk_df_sorted = pd.DataFrame(risk_data).sort_values('Risk Score')
+    st.dataframe(risk_df_sorted[['Scenario', 'Risk Level', 'Risk Score', 'Expected Return']],
+                 use_container_width=True)
+
+
+def display_portfolio_monte_carlo_impact(mc_results):
+    """Display portfolio Monte Carlo impact - EXACT COPY"""
+    st.markdown("#### 💼 Portfolio-Level Monte Carlo Impact")
+
+    portfolio_analysis = mc_results.get('portfolio_analysis', {})
+
+    if not portfolio_analysis:
+        st.warning("No portfolio analysis available in Monte Carlo results")
+        return
+
+    # Portfolio impact summary
+    st.markdown("##### 💰 Portfolio Impact Summary")
+
+    impact_data = []
+
+    for scenario_name, impact in portfolio_analysis.items():
+        scenario_display_name = scenario_name.replace('_', ' ').title()
+
+        expected_pnl = impact.get('expected_pnl', 0)
+        portfolio_impact_pct = impact.get('expected_portfolio_impact_pct', 0)
+        var_95_loss = impact.get('var_95_loss', 0)
+        prob_profit = impact.get('probability_profit', 0.5)
+        max_potential_loss = impact.get('max_potential_loss', 0)
+
+        impact_data.append({
+            'Scenario': scenario_display_name,
+            'Expected P&L': f"${expected_pnl:,.0f}",
+            'Portfolio Impact': f"{portfolio_impact_pct:+.2f}%",
+            'VaR Loss': f"${var_95_loss:,.0f}",
+            'Prob Profit': f"{prob_profit:.1%}",
+            'Max Loss': f"${max_potential_loss:,.0f}"
+        })
+
+    df_impact = pd.DataFrame(impact_data)
+    st.dataframe(df_impact, use_container_width=True)
+
+    # Portfolio impact visualization
+    st.markdown("##### 📊 Portfolio Impact Distribution")
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=['Expected Portfolio Impact (%)', 'Risk Distribution ($)']
+    )
+
+    scenarios = list(portfolio_analysis.keys())
+    portfolio_impacts = [impact.get('expected_portfolio_impact_pct', 0) for impact in portfolio_analysis.values()]
+    var_losses = [impact.get('var_95_loss', 0) for impact in portfolio_analysis.values()]
+
+    # Portfolio impact bar chart
+    colors = ['green' if x > 0 else 'red' if x < -2 else 'orange' for x in portfolio_impacts]
+
+    fig.add_trace(
+        go.Bar(
+            x=[s.replace('_', ' ').title() for s in scenarios],
+            y=portfolio_impacts,
+            name='Portfolio Impact %',
+            marker_color=colors,
+            text=[f'{x:+.1f}%' for x in portfolio_impacts],
+            textposition='auto'
+        ),
+        row=1, col=1
+    )
+
+    # VaR loss distribution
+    fig.add_trace(
+        go.Bar(
+            x=[s.replace('_', ' ').title() for s in scenarios],
+            y=var_losses,
+            name='VaR Loss $',
+            marker_color='red',
+            opacity=0.7,
+            text=[f'${x:,.0f}' for x in var_losses],
+            textposition='auto'
+        ),
+        row=1, col=2
+    )
+
+    fig.update_layout(
+        title="Portfolio Monte Carlo Impact Analysis",
+        template="plotly_white",
+        height=400,
+        showlegend=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Portfolio risk assessment
+    st.markdown("##### ⚠️ Portfolio Risk Assessment")
+
+    # Calculate overall portfolio risk metrics
+    avg_impact = np.mean(portfolio_impacts)
+    max_loss = max(var_losses)
+    portfolio_value = st.session_state.get('portfolio_value', 100000)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("📊 Average Impact", f"{avg_impact:+.2f}%")
+
+        if avg_impact > 2:
+            impact_assessment = "🟢 Positive Expected"
+        elif avg_impact > -1:
+            impact_assessment = "🟡 Neutral"
+        else:
+            impact_assessment = "🔴 Negative Expected"
+
+        st.write(f"**Assessment:** {impact_assessment}")
+
+    with col2:
+        max_loss_pct = (max_loss / portfolio_value) * 100
+        st.metric("🔴 Max Potential Loss", f"${max_loss:,.0f}")
+        st.write(f"**As % of Portfolio:** {max_loss_pct:.1f}%")
+
+        if max_loss_pct < 5:
+            risk_level = "🟢 Acceptable"
+        elif max_loss_pct < 10:
+            risk_level = "🟡 Elevated"
+        else:
+            risk_level = "🔴 High Risk"
+
+        st.write(f"**Risk Level:** {risk_level}")
+
+    with col3:
+        # Calculate risk-reward ratio
+        avg_profit_scenarios = [impact for impact in portfolio_analysis.values()
+                                if impact.get('expected_pnl', 0) > 0]
+
+        if avg_profit_scenarios:
+            avg_profit = np.mean([impact.get('expected_pnl', 0) for impact in avg_profit_scenarios])
+            if max_loss > 0:
+                risk_reward_ratio = avg_profit / max_loss
+                st.metric("⚖️ Risk/Reward", f"{risk_reward_ratio:.2f}")
+            else:
+                st.metric("⚖️ Risk/Reward", "∞")
+        else:
+            st.metric("⚖️ Risk/Reward", "N/A")
+
+        st.write(f"**Portfolio Value:** ${portfolio_value:,.0f}")
+
+
 def display_advanced_monte_carlo_results():
     """Display advanced Monte Carlo results - EXACT COPY"""
     st.markdown("---")
@@ -11122,4 +12247,3 @@ This Streamlit version maintains 100% of the original Tkinter application functi
 © 2025 SmartStock AI Professional Trading Analysis Platform
 All Rights Reserved. Licensed Software Product.
 """
-
